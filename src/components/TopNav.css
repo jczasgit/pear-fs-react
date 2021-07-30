@@ -1,0 +1,69 @@
+.topnav {
+  position: fixed;
+  top: 0;
+  right: 0;
+  margin: 0.5em 1.5em;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 1;
+  transition: top 0.3s ease;
+  box-shadow: var(--nav-shadow);
+}
+
+@media (max-width: 768px) {
+  .topnav {
+    margin: 0;
+    top: 40%;
+  }
+}
+
+.item {
+  width: var(--nav-width);
+  max-width: 70px;
+  height: var(--nav-width);
+  max-height: 70px;
+  background: var(--nav-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: var(--font-size);
+}
+
+.item img,
+.item svg {
+  width: 1.5em;
+  height: 1.5em;
+}
+
+.topnav .item-container .item:hover .primary-path {
+  color: var(--text-color);
+}
+
+.topnav .item-container .item .primary-path {
+  color: var(--gray3);
+  transition: color 0.5s ease;
+}
+
+.topnav .item-container .item .secondary-path {
+  color: var(--gray4);
+  transition: color 0.5s ease;
+}
+
+.topnav .item-container .item:hover .secondary-path {
+  color: var(--h-color);
+}
+
+/* First item of top nav */
+.topnav .item-container:nth-of-type(1) .item {
+  background-color: var(--green);
+}
+.topnav .item-container:nth-of-type(1) .item .primary-path {
+  color: var(--h-color);
+}
+.topnav .item-container:nth-of-type(1) .item:hover .primary-path {
+  color: var(--h-color);
+}
+/* End of first item of top nav */

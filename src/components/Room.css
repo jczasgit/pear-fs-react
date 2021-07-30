@@ -1,0 +1,7 @@
+.topnav .item-container .item:hover .secondary-path.traffic-arrow {
+  color: var(--pink-light);
+}
+
+.topnav .item-container .item:hover .primary-path.traffic-arrow {
+  color: var(--blue-light);
+}

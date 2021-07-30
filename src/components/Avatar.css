@@ -1,0 +1,54 @@
+.avatar {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: max-content;
+  height: max-content;
+  padding: 1rem;
+  transition: all 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .avatar {
+    background-color: var(--nav-bg);
+    width: 100%;
+    justify-content: flex-start;
+    flex-direction: row;
+    box-shadow: var(--card-shadow);
+  }
+}
+
+.avatar .img {
+  width: var(--nav-width);
+  max-width: 70px;
+  height: var(--nav-width);
+  max-height: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background-color: transparent;
+}
+
+.avatar .content {
+  font-size: var(--font-size);
+  text-align: center;
+  background-color: transparent;
+  width: max-content;
+  height: max-content;
+  display: flex;
+  flex-direction: column;
+  text-transform: capitalize;
+}
+
+.avatar .content .nickname {
+  text-transform: none;
+}
+
+@media (max-width: 768px) {
+  .avatar .content {
+    margin-left: 1.5rem;
+  }
+}
