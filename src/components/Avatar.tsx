@@ -1,17 +1,48 @@
-import { FC, Fragment, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  ChangeEventHandler,
+  FC,
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Icon from "./Icon";
 import "./Avatar.css";
 import Modal from "./Modal";
 
 declare interface AvatarProps {
-  id: number;
+  id: number; // avatar id
+  extraClass?: string;
+  prefix?: string; // string that goes before nickname
+  disableEdit?: boolean;
+  customNickname?: string; // a pre defined nickname
+  peerId?: string; // use to keep track which on is which
+  onNicknameChange?: (nickname: string) => void;
+  onFileSelected?: (peerId: string, input: HTMLInputElement) => void;
 }
 
-export const Avatar: FC<AvatarProps> = ({ id }) => {
+export const Avatar: FC<AvatarProps> = ({
+  id,
+  extraClass,
+  prefix,
+  disableEdit,
+  customNickname,
+  peerId,
+  onFileSelected,
+  onNicknameChange,
+}) => {
   const [avatarInfo, setAvatarInfo] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [nickname, setNickname] = useState("anonymous");
+  const [nickname, setNickname] = useState(customNickname ?? "Anonymous");
   const [modalIsOpen, setOpenModal] = useState(false);
+
+  const inputRef = useRef<HTMLInputElement>();
+  const fileInputRef = useRef<HTMLInputElement>();
+
+  useEffect(() => {
+    if (customNickname) setNickname(customNickname);
+  }, [customNickname]);
 
   useEffect(() => {
     setLoading(true);
@@ -49,34 +80,68 @@ export const Avatar: FC<AvatarProps> = ({ id }) => {
   };
 
   const submitNickname = () => {
+    let customNickname = inputRef.current.value;
+    if (customNickname) {
+      setNickname(customNickname);
+      if (onNicknameChange) onNicknameChange(customNickname);
+    }
+
     setOpenModal(false);
   };
 
   const closePromptForNickname = () => {
+    inputRef.current.value = "";
     setOpenModal(false);
+  };
+
+  const onClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const notifyFileChanged: ChangeEventHandler<HTMLInputElement> = (
+    e: ChangeEvent
+  ) => {
+    onFileSelected(peerId, e.target as HTMLInputElement);
   };
 
   if (!loading && avatarInfo) {
     return (
       <Fragment>
-        <div className="avatar">
+        <div className={extraClass ? "avatar " + extraClass : "avatar"}>
           <Modal
             isOpen={modalIsOpen}
             onClose={closePromptForNickname}
             onSubmit={submitNickname}
             title="edit nickname"
           >
-            Content
+            <input
+              type="text"
+              name="nickname"
+              ref={inputRef}
+              placeholder="Enter a nickname"
+              maxLength={12}
+            />
           </Modal>
-          <div className="img">
+          <div className="img" onClick={onFileSelected ? onClick : null}>
             <Icon filename={avatarInfo.filename} />
           </div>
           <div className="content">
-            <span className="nickname" onClick={promptForNickname}>
-              <strong>{nickname}</strong>
+            <span
+              className="nickname"
+              onClick={disableEdit ? null : promptForNickname}
+            >
+              <strong>{prefix ? `${prefix}-${nickname}` : nickname}</strong>
             </span>
             <span className="text">{avatarInfo.name}</span>
           </div>
+          <input
+            type="file"
+            name="file"
+            ref={fileInputRef}
+            hidden
+            onChange={notifyFileChanged}
+            disabled={onFileSelected === undefined}
+          />
         </div>
       </Fragment>
     );

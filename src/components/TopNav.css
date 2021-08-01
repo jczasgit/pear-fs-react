@@ -11,7 +11,7 @@
   box-shadow: var(--nav-shadow);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1023.99px) {
   .topnav {
     margin: 0;
     top: 40%;
@@ -32,10 +32,32 @@
   font-size: var(--font-size);
 }
 
+@media (min-width: 1800px) {
+  .item {
+    max-width: 100px;
+    max-height: 100px;
+  }
+}
+
+@media (min-width: 2400px) {
+  .item {
+    max-width: 200px;
+    max-height: 200px;
+  }
+}
+
 .item img,
 .item svg {
   width: 1.5em;
   height: 1.5em;
+}
+
+@media (min-width: 2400px) {
+  .item img,
+  .item svg {
+    width: 2.5em;
+    height: 2.5em;
+  }
 }
 
 .topnav .item-container .item:hover .primary-path {

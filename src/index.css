@@ -104,6 +104,22 @@
   }
 }
 
+@media (min-width: 1800px) {
+  :root {
+    --font-size: 25px;
+    --nav-width: 5em;
+    --h-font-size: 29px;
+  }
+}
+
+@media (min-width: 2400px) {
+  :root {
+    --font-size: 30px;
+    --nav-width: 8em;
+    --h-font-size: 36px;
+  }
+}
+
 /* End of Global Variables */
 
 /* Common Styles */

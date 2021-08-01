@@ -5,3 +5,9 @@
 .topnav .item-container .item:hover .primary-path.traffic-arrow {
   color: var(--blue-light);
 }
+
+.peer-field {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}

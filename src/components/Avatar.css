@@ -9,13 +9,55 @@
   transition: all 0.3s ease;
 }
 
-@media (max-width: 768px) {
+@media (min-width: 1024px) {
+  .avatar {
+    position: absolute;
+  }
+
+  .avatar:nth-of-type(1) {
+    /* self, you, or me avatar */
+    bottom: 10%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .avatar:nth-of-type(2) {
+    top: 30%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .avatar:nth-of-type(3) {
+    top: 50%;
+    left: 20%;
+    transform: translateY(-50%);
+  }
+
+  .avatar:nth-of-type(4) {
+    top: 50%;
+    right: 20%;
+    transform: translateY(-50%);
+  }
+
+  .avatar:nth-of-type(5) {
+    top: 15%;
+    right: 30%;
+  }
+
+  .avatar:nth-of-type(6) {
+    top: 15%;
+    left: 30%;
+  }
+}
+
+@media (max-width: 1023.99px) {
   .avatar {
     background-color: var(--nav-bg);
     width: 100%;
     justify-content: flex-start;
     flex-direction: row;
     box-shadow: var(--card-shadow);
+    position: initial;
   }
 }
 
@@ -32,6 +74,20 @@
   background-color: transparent;
 }
 
+@media (min-width: 1800px) {
+  .avatar .img {
+    max-width: 100px;
+    max-height: 100px;
+  }
+}
+
+@media (min-width: 2400px) {
+  .avatar .img {
+    max-width: 200px;
+    max-height: 200px;
+  }
+}
+
 .avatar .content {
   font-size: var(--font-size);
   text-align: center;
@@ -45,6 +101,12 @@
 
 .avatar .content .nickname {
   text-transform: none;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.avatar .content .nickname:hover {
+  color: var(--h-color);
 }
 
 @media (max-width: 768px) {
