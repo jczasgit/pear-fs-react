@@ -52,6 +52,10 @@ export class WRTC extends EventEmitter {
     return this._dataChannel;
   }
 
+  public send(data: any) {
+    this._dataChannel.send(data);
+  }
+
   // an id is needed to correctly write the chunk of data on the remote side.
   // max cuncurrent data transfer through data channel is 16;
   public sendBinary(data: ArrayBuffer, id?: number) {

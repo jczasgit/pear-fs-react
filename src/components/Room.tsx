@@ -204,6 +204,21 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     toggleFileModal();
   };
 
+  const readFile = (file: File, id: string) => {
+    const reader = file.stream().getReader();
+    const read = async () => {
+      let { value, done } = await reader.read();
+
+      if (done) return console.log("done");
+
+      wrtcPool.get(id).send(value.buffer);
+
+      return read();
+    };
+
+    read();
+  };
+
   const toggleFileModal = () => {
     if (fileConfirm && confirmationInfo !== null) {
       // cancel / exit from file confirmation modal
@@ -244,9 +259,11 @@ const Room: FC<Props> = ({ setTheme, match }) => {
               .catch(console.error)
               .finally(() => {
                 // todo: remove when done testing
-                setInterval(() => {
-                  wrtcPool.get(confirmationInfo.id).dataChannel.send("Hello!!");
-                }, 1000);
+
+                wrtc.on("open", () => {
+                  console.log("data channel opened.");
+                  readFile(confirmationInfo.file, confirmationInfo.id);
+                });
               });
           });
         });
