@@ -25,7 +25,7 @@ export interface CustomFileOptions {
 export class CustomFile extends EventEmitter {
   private _mode: number;
   private _file: NativeFile;
-  private _memoryStorage: MemoryStorage;
+  private _memoryStorage: Array<any>;
   private _showSaveFilePicker: any;
   private _requestFileSystem: any;
   private _fs: any;
@@ -93,9 +93,7 @@ export class CustomFile extends EventEmitter {
           // use memory storage for files less than 500 mb
           if (this._size < 500 * 1024 * 1024) {
             console.log("Using memory storage for files less than 500mb.");
-            this._memoryStorage = new MemoryStorage(this._pieces, {
-              chunkSize: this._pieceLength,
-            });
+            this._memoryStorage = [];
             this._writeMode = "mem";
             this.emit("ready");
             return;
@@ -125,9 +123,7 @@ export class CustomFile extends EventEmitter {
             console.warn(
               "File system is not available. Using memory storage method to download file."
             );
-            this._memoryStorage = new MemoryStorage(this._pieces, {
-              chunkSize: this._pieceLength,
-            });
+            this._memoryStorage = [];
             this._writeMode = "mem";
             this.emit("ready");
           }
@@ -163,18 +159,19 @@ export class CustomFile extends EventEmitter {
     // todo: handle the write according to browser support
     switch (this._writeMode) {
       case "mem":
-        this._writeMem(chunk);
-        break;
+        return this._writeMem(chunk);
       case "fs":
-        this._writeFs(chunk);
-        break;
+        return this._writeFs(chunk);
       default:
         this.emit("error", new Error("No write mode set."));
-        break;
+        return Promise.resolve();
     }
   }
 
-  public _writeMem(chunk: any) {}
+  public async _writeMem(chunk: any) {
+    this._memoryStorage.push(chunk);
+    return;
+  }
 
   public _writeFs(chunk: any) {
     let self = this;

@@ -1,3 +1,5 @@
+// todo: refactor code
+
 import { EventEmitter } from "events";
 import queueMicrotask from "queue-microtask";
 import { Buffer } from "buffer";
