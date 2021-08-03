@@ -8,7 +8,7 @@ import { Header } from "./Header";
 import Modal from "./Modal";
 import { Socket } from "socket.io-client";
 import { useSocket } from "../hooks/useSocket";
-import { WRTC } from "../services/wrtc";
+import { WRTC } from "../helpers/wrtc";
 
 declare interface Props extends RouteComponentProps<{ id: string }> {
   setTheme: Function;

@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import queueMicrotask from "queue-microtask";
+import { Buffer } from "buffer";
 
 export interface SignalData {
   payload: string; // stringify version of RTCSessionDescription
@@ -26,8 +27,7 @@ export type IceConnectionState =
 export class WRTC extends EventEmitter {
   private _peerConnection: RTCPeerConnection;
   private _dataChannel: RTCDataChannel;
-  private _bufferData: ArrayBuffer[]; // private property for storing raw data before a connection has been established.
-  private _jsonData: any[];
+  private _file: File; // custom File object
   private _connected: boolean;
   readonly myid: string; // this is the id for local peer, aka yourself.
   readonly peerid: string; // this is the id for remote peer, aka the target.
@@ -41,8 +41,6 @@ export class WRTC extends EventEmitter {
     this._connected = false;
     this._peerConnection = null;
     this._dataChannel = null;
-    this._bufferData = [];
-    this._jsonData = [];
   }
 
   get peerConnection(): RTCPeerConnection {
@@ -52,6 +50,10 @@ export class WRTC extends EventEmitter {
     return this._dataChannel;
   }
 
+  get connected(): boolean {
+    return this._connected;
+  }
+
   public send(data: any) {
     this._dataChannel.send(data);
   }
@@ -59,11 +61,6 @@ export class WRTC extends EventEmitter {
   // an id is needed to correctly write the chunk of data on the remote side.
   // max cuncurrent data transfer through data channel is 16;
   public sendBinary(data: ArrayBuffer, id?: number) {
-    if (!this._peerConnection && !this._dataChannel) {
-      queueMicrotask(this._storeChunk.bind(this, data, "binary"));
-      return;
-    }
-
     // todo: send data
     // todo: parse binary data
     /**
@@ -78,10 +75,6 @@ export class WRTC extends EventEmitter {
   }
 
   public sendJson(json: any) {
-    if (!this._peerConnection && !this._dataChannel) {
-      queueMicrotask(this._storeChunk.bind(this, json, "json"));
-    }
-
     // todo: send json
     /**
      * First 8 bits description👇👇👇
@@ -255,6 +248,7 @@ export class WRTC extends EventEmitter {
 
   private _onConnectionStateChange() {
     // the following states are: new, connecting, connected, disconnected, failed, closed.
+    this._connected = this._peerConnection.connectionState === "connected";
     this.emit("connectionstatechange", this._peerConnection.connectionState);
   }
 
@@ -268,21 +262,6 @@ export class WRTC extends EventEmitter {
       "iceconnectionstatechange",
       this._peerConnection.iceConnectionState
     );
-  }
-
-  private _storeChunk(chunk: ArrayBuffer, where: string) {
-    switch (where) {
-      case "binary":
-        this._bufferData.push(chunk);
-        break;
-      case "json":
-        this._jsonData.push(chunk);
-        break;
-      default:
-        console.warn("Could not find chunk store array. Dumping data...");
-        chunk = null;
-        break;
-    }
   }
 
   on(evt: "error", callback: (err: any) => void): this;
