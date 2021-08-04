@@ -13,9 +13,9 @@ export const Load: React.FC<Props> = ({ history }) => {
           history.push("/room/" + json.roomId);
         } else {
           // todo: Route to error page ❌
-          // todo: instead of an error page,
-          // todo: allow user to copy and paste 📝
-          // todo: ice candidate and manually connect
+          // note: instead of an error page,
+          // note: allow user to copy and paste 📝
+          // note: ice candidate and manually connect
           alert("Could not join room");
         }
       })

@@ -1,13 +1,26 @@
 // todo: refactor code
 
 import { EventEmitter } from "events";
+import { CustomFile } from "./customFile";
 import queueMicrotask from "queue-microtask";
-import { Buffer } from "buffer";
 
 export interface SignalData {
   payload: string; // stringify version of RTCSessionDescription
   from: string; // id of the signaler
   to: string; // id of the signal target
+}
+
+export interface JsonData {
+  type: string;
+  payload: any;
+}
+
+export interface Metadata {
+  pieces: number;
+  pieceLength: number;
+  filename: string;
+  type: string;
+  size: number;
 }
 
 export type ConnectionState =
@@ -29,7 +42,7 @@ export type IceConnectionState =
 export class WRTC extends EventEmitter {
   private _peerConnection: RTCPeerConnection;
   private _dataChannel: RTCDataChannel;
-  private _file: File; // custom File object
+  private _file: CustomFile; // custom File object
   private _connected: boolean;
   readonly myid: string; // this is the id for local peer, aka yourself.
   readonly peerid: string; // this is the id for remote peer, aka the target.
@@ -43,6 +56,7 @@ export class WRTC extends EventEmitter {
     this._connected = false;
     this._peerConnection = null;
     this._dataChannel = null;
+    this._file = null;
   }
 
   get peerConnection(): RTCPeerConnection {
@@ -56,35 +70,106 @@ export class WRTC extends EventEmitter {
     return this._connected;
   }
 
-  public send(data: any) {
+  get file(): CustomFile {
+    return this._file;
+  }
+
+  public async setFile(file: File) {
+    return new Promise<void>((resolve, reject) => {
+      console.log("Create new CustomFile");
+      this._file = new CustomFile(0x2, {
+        file,
+        filename: file.name,
+        pieceLength: 16 * 1024,
+        pieces: Math.ceil(file.size / (16 * 1024)),
+        size: file.size,
+        type: file.type,
+      });
+      this._file.once("ready", () => {
+        console.log("File is ready.");
+        resolve();
+      });
+      this._file.on("data", (data) => {
+        if (data === null) {
+          this.sendJson({
+            type: "done",
+            payload: {},
+          });
+          this._file.destroy();
+          return;
+        }
+        this.sendBinary(data);
+      });
+
+      this._file.once("done", () => {
+        console.log("File download done.");
+      });
+      this._file.once("destroy", () => {
+        console.log("File destroyed.");
+        this._file = null;
+        this._dataChannel.close();
+      });
+      this._file.on("progress", (progress) => {
+        this.emit("progress", progress);
+      });
+      this._file.on("error", (error) => {
+        this.emit("error", error);
+      });
+      this._file.init();
+    });
+  }
+
+  public acceptFile(metadata: Metadata) {
+    console.log("Create new CustomFile");
+    this._file = new CustomFile(0x1, metadata);
+    this._file.once("ready", () => {
+      console.log("File ready.");
+      this.sendJson({
+        type: "download",
+        payload: {},
+      });
+    });
+    this._file.on("progress", (progress) => {
+      this.emit("progress", progress);
+    });
+    this._file.once("done", () => {
+      console.log("File download done.");
+      console.log(this._file);
+    });
+    this._file.once("destroy", () => {
+      console.log("File destroyed.");
+      this._file = null;
+      this._dataChannel.close();
+    });
+    this._file.on("error", (error) => {
+      console.error(error);
+    });
+
+    this._file.init();
+  }
+
+  public rejectFile(metadata: Metadata) {
+    this.sendJson({
+      type: "reject",
+      payload: metadata,
+    });
+  }
+
+  public close() {
+    this._peerConnection.close();
+    this._connected = false;
+    this._peerConnection = null;
+    this._dataChannel = null;
+    this._file = null;
+    console.log("Connection closed.");
+  }
+
+  public sendBinary(data: ArrayBuffer) {
     this._dataChannel.send(data);
   }
 
-  // an id is needed to correctly write the chunk of data on the remote side.
-  // max cuncurrent data transfer through data channel is 16;
-  public sendBinary(data: ArrayBuffer, id?: number) {
-    // todo: send data
-    // todo: parse binary data
-    /**
-     * First 8 bits description👇👇👇
-     * File data chunk size is fixed to 16kb.
-     * ---------------------------------------------------
-     * | type  of  data   | file id |   payload length  |
-     * | 0x0 - binary data|   0x7   |       16kb        |
-     * ----------------------------------------------------
-     */
-    this._dataChannel.send(data);
-  }
-
-  public sendJson(json: any) {
-    // todo: send json
-    /**
-     * First 8 bits description👇👇👇
-     * ---------------------------------------------------
-     * | type  of  data   |       payload length        |
-     * | 0x1 - json data  |    0x7f - 0 - 127 bytes     |
-     * ----------------------------------------------------
-     */
+  public sendJson(json: JsonData) {
+    this._dataChannel.send(JSON.stringify(json));
   }
 
   public connect(description: RTCSessionDescription): void;
@@ -201,7 +286,7 @@ export class WRTC extends EventEmitter {
     dc.onclose = this._onClose.bind(this);
     dc.onerror = this._onError.bind(this);
     dc.onopen = this._onOpen.bind(this);
-    dc.onmessage = this._onBinaryData.bind(this);
+    dc.onmessage = this._onData.bind(this);
     if (dc["onclosing"]) dc["onclosing"] = this._onClosing.bind(this);
   }
 
@@ -209,7 +294,9 @@ export class WRTC extends EventEmitter {
     this.emit("close");
   }
 
-  private _onError(e: ErrorEvent) {}
+  private _onError(e: ErrorEvent) {
+    this.emit("error", e);
+  }
 
   private _onOpen() {
     this.emit("open");
@@ -219,8 +306,12 @@ export class WRTC extends EventEmitter {
     this.emit("closing");
   }
 
-  private _onBinaryData(e: MessageEvent) {
-    console.log(e.data);
+  private _onData(e: MessageEvent) {
+    if (typeof e.data === "string") {
+      this._parseJSON(e);
+    } else {
+      this._write(e.data);
+    }
   }
 
   /**
@@ -228,13 +319,44 @@ export class WRTC extends EventEmitter {
    * Since this WRTC can handle multiple file transfers,
    * a specific file needs to be passed to this function.
    * @param {ArrayBuffer} chunk
-   * @param {File} file
    */
-  private _write(chunk: ArrayBuffer, file) {}
+  private _write(chunk: ArrayBuffer) {
+    let self = this;
+    this._file.write(chunk).then(() => {
+      queueMicrotask(() => {
+        self.sendJson({
+          type: "download",
+          payload: {},
+        });
+        self = null;
+      });
+    });
+  }
 
-  private _parseJSON(e: MessageEvent) {}
+  private _parseJSON(e: MessageEvent) {
+    let json: JsonData = JSON.parse(e.data);
 
-  private _encodeFileId(raw: ArrayBuffer) {}
+    switch (json.type) {
+      case "file":
+        this._incomingFile(json.payload);
+        break;
+      case "download":
+        this._file.read(true);
+        break;
+      case "reject":
+        this._file.destroy();
+        break;
+      case "done":
+        this._file.save();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private _incomingFile(metadata: Metadata) {
+    this.emit("incoming", metadata);
+  }
 
   private _onIceCandidate(e: RTCPeerConnectionIceEvent) {
     // We only want to signal when all candidates have been added.
@@ -266,6 +388,7 @@ export class WRTC extends EventEmitter {
     );
   }
 
+  on(evt: "open", callback: () => void): this;
   on(evt: "error", callback: (err: any) => void): this;
   on(evt: "signal", callback: (signal: SignalData) => void): this;
   on(evt: "answer", callback: (answer: SignalData) => void): this;
@@ -274,6 +397,8 @@ export class WRTC extends EventEmitter {
   //prettier-ignore
   on(evt: "iceconnectionstatechange", callback: (state: IceConnectionState) => void): this;
   on(evt: "icegathetingerror", callback: (err: any) => void): this;
+  on(evt: "incoming", callback: (metadata: Metadata) => void): this;
+  on(evt: "progress", callback: (progress: number) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.on(evt, callback);
@@ -287,11 +412,14 @@ export class WRTC extends EventEmitter {
   //prettier-ignore
   once(evt: "iceconnectionstatechange", callback: (state: IceConnectionState) => void): this;
   once(evt: "icegathetingerror", callback: (err: any) => void): this;
+  once(evt: "incoming", callback: (metadata: Metadata) => void): this;
+  once(evt: "progress", callback: (progress: number) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.once(evt, callback);
   }
 
+  off(evt: "open", callback: () => void): this;
   off(evt: "error", callback: (err: any) => void): this;
   off(evt: "signal", callback: (signal: SignalData) => void): this;
   off(evt: "answer", callback: (answer: SignalData) => void): this;
@@ -300,8 +428,26 @@ export class WRTC extends EventEmitter {
   //prettier-ignore
   off(evt: "iceconnectionstatechange", callback: (state: IceConnectionState) => void): this;
   off(evt: "icegathetingerror", callback: (err: any) => void): this;
+  off(evt: "incoming", callback: (metadata: Metadata) => void): this;
+  off(evt: "progress", callback: (progress: number) => void): this;
   off(evt: string | symbol, callback: (...args: any[]) => void): this;
   off(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.off(evt, callback);
+  }
+
+  emit(evt: "open"): boolean;
+  emit(evt: "error", err: any): boolean;
+  emit(evt: "signal", signal: SignalData): boolean;
+  emit(evt: "answer", answer: SignalData): boolean;
+  //prettier-ignore
+  emit(evt: "connectionstatechange", state: ConnectionState): boolean;
+  //prettier-ignore
+  emit(evt: "iceconnectionstatechange", state: IceConnectionState): boolean;
+  emit(evt: "icegathetingerror", err: any): boolean;
+  emit(evt: "incoming", metadata: Metadata): boolean;
+  emit(evt: "progress", progress: number): boolean;
+  emit(evt: string | symbol, ...args: any[]): boolean;
+  emit(evt: string | symbol, ...args: any[]): boolean {
+    return super.emit(evt, ...args);
   }
 }

@@ -3,15 +3,30 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  width: max-content;
-  height: max-content;
-  padding: 1rem;
+  width: 170px;
+  height: 170px;
   transition: all 0.3s ease;
+  background-color: var(--nav-bg);
+  border-radius: 50%;
 }
 
 @media (min-width: 1024px) {
   .avatar {
     position: absolute;
+  }
+
+  @media (min-width: 1800px) {
+    .avatar {
+      width: 250px;
+      height: 250px;
+    }
+  }
+
+  @media (min-width: 2400px) {
+    .avatar {
+      width: 300px;
+      height: 300px;
+    }
   }
 
   .avatar:nth-of-type(1) {
@@ -52,12 +67,12 @@
 
 @media (max-width: 1023.99px) {
   .avatar {
-    background-color: var(--nav-bg);
     width: 100%;
     justify-content: flex-start;
     flex-direction: row;
     box-shadow: var(--card-shadow);
     position: initial;
+    border-radius: initial;
   }
 }
 
@@ -113,4 +128,16 @@
   .avatar .content {
     margin-left: 1.5rem;
   }
+}
+
+.overlay {
+  position: absolute;
+  z-index: 1;
+  background-color: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  color: var(--h-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: var(--font-size);
 }

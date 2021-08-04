@@ -12,8 +12,9 @@ import "./Avatar.css";
 import Modal from "./Modal";
 
 declare interface AvatarProps {
-  id: number; // avatar id
+  avatarId: number; // avatar id
   extraClass?: string;
+  id: string;
   prefix?: string; // string that goes before nickname
   disableEdit?: boolean;
   customNickname?: string; // a pre defined nickname
@@ -23,6 +24,7 @@ declare interface AvatarProps {
 }
 
 export const Avatar: FC<AvatarProps> = ({
+  avatarId,
   id,
   extraClass,
   prefix,
@@ -49,7 +51,7 @@ export const Avatar: FC<AvatarProps> = ({
 
     const getAvatar = async () => {
       try {
-        let res = await fetch("http://localhost:3001/api/avatar/" + id);
+        let res = await fetch("http://localhost:3001/api/avatar/" + avatarId);
         /**
          * {
          *  "filename": "id.svg",
@@ -60,15 +62,14 @@ export const Avatar: FC<AvatarProps> = ({
         setAvatarInfo(json);
       } catch (error) {
         console.error(error);
-        // todo: route to error page
-        // todo: or fallback img use
+        // todo: route to error page or fallback img use
       } finally {
         setLoading(false);
       }
     };
 
     getAvatar();
-  }, [id]);
+  }, [avatarId]);
 
   const promptForNickname = () => {
     // let customNickname = prompt("Enter your nickname");
@@ -107,7 +108,11 @@ export const Avatar: FC<AvatarProps> = ({
   if (!loading && avatarInfo) {
     return (
       <Fragment>
-        <div className={extraClass ? "avatar " + extraClass : "avatar"}>
+        <div
+          className={extraClass ? "avatar " + extraClass : "avatar"}
+          id={id}
+          data-peerid={peerId}
+        >
           <Modal
             isOpen={modalIsOpen}
             onClose={closePromptForNickname}

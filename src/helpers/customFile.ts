@@ -8,18 +8,18 @@
  */
 
 import { EventEmitter } from "events";
-import { MemoryStorage } from "./memoryStorage";
+import queueMicrotask from "queue-microtask";
 
 export type NativeFile = File;
-export type FileMode = 1 | 2;
+export type FileMode = 0x1 | 0x2;
 
 export interface CustomFileOptions {
   file?: NativeFile;
-  pieces?: number;
-  pieceLength?: number;
-  filename?: string;
-  type?: string;
-  size?: number;
+  pieces: number;
+  pieceLength: number;
+  filename: string;
+  type: string;
+  size: number;
 }
 
 export class CustomFile extends EventEmitter {
@@ -40,7 +40,9 @@ export class CustomFile extends EventEmitter {
   private _writeMode: "fs" | "mem";
   private _create: boolean;
   private _fileEntry: any;
-  private _seek: number;
+  private _bytesWritten: number;
+  private _bytesRead: number;
+  private _destroyed: boolean;
 
   constructor(mode: FileMode = 0x1, opts: CustomFileOptions) {
     super();
@@ -60,8 +62,11 @@ export class CustomFile extends EventEmitter {
     this._fs = null; // this is assigned when the file system is available.
     this._writeMode = null;
     this._create = true;
-    this._fileEntry = null;
-    this._seek = 0;
+    this._destroyed = false;
+    this._bytesWritten = 0;
+    this._bytesRead = 0;
+
+    this.on("finish", this.destroy.bind(this));
   }
 
   get mode(): number {
@@ -168,16 +173,18 @@ export class CustomFile extends EventEmitter {
     }
   }
 
-  public async _writeMem(chunk: any) {
+  private async _writeMem(chunk: any) {
     this._memoryStorage.push(chunk);
+    this._bytesWritten += chunk.size;
+    this.emit("progress", this._memoryStorage.length / this._pieces);
     return;
   }
 
-  public _writeFs(chunk: any) {
+  private _writeFs(chunk: any) {
     let self = this;
     let opts = { create: this._create };
 
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       self._fs.root.getFile(
         self._localName,
         opts,
@@ -190,77 +197,194 @@ export class CustomFile extends EventEmitter {
             let blob = new Blob([chunk], { type: self._type });
 
             console.log(
-              "File: Appending " + blob.size + " bytes at " + self._seek
+              "File: Appending " + blob.size + " bytes at " + self._bytesWritten
             );
 
             writer.onwriteend = () => {
-              self._seek += blob.size;
+              self._bytesWritten += blob.size;
+              self.emit("progress", self._bytesWritten / self._size);
               blob = null;
               resolve();
             };
 
             writer.onerror = (err) => {
-              self.emit("error", err);
+              reject(err);
             };
 
-            writer.seek(self._seek);
+            writer.seek(self._bytesWritten);
             writer.write(blob);
           });
         },
         (err: any) => {
-          self.emit("error", err);
+          reject(err);
         }
       );
     });
   }
 
-  public read() {
-    if (!this._readStream) {
-      this.emit("error", new Error("Cannot read before init() is called."));
-      return;
+  public read(inChunk: boolean = true) {
+    if (inChunk) {
+      if (this._bytesRead < this._size) {
+        let blob = this._file.slice(
+          this._bytesRead,
+          Math.min(this._bytesRead + this._pieceLength, this._size),
+          this._type
+        );
+        this._bytesRead += blob.size;
+        this.emit("data", blob);
+        this.emit("progress", this._bytesRead / this._size);
+      } else {
+        console.log("No more data");
+        this.emit("data", null);
+      }
+    } else {
+      if (!this._readStream) {
+        this.emit("error", new Error("Cannot read before init() is called."));
+        return;
+      }
+
+      if (!this._reader) this._reader = this._readStream.getReader();
+
+      let self = this;
+      this._reader.read().then(({ value, done }) => {
+        if (done) self.emit("data", null);
+
+        self._bytesRead += value.bytesLenght;
+        self.emit("data", value);
+        self.emit("progress", this._bytesRead / this._size);
+      });
     }
-
-    if (!this._reader) this._reader = this._readStream.getReader();
-
-    let self = this;
-    this._reader.read().then(({ value, done }) => {
-      if (done) return self._finish();
-
-      self.emit("data", value);
-    });
   }
 
   public save() {
     // save file to downloads folder
+    console.log("Saving file.");
+    console.log("File:", this._name);
+
+    let anchor = document.createElement("a");
+    anchor.download = this._name;
+
+    const finish = (link) => {
+      document.body.appendChild(link);
+      link.addEventListener("click", () => {
+        queueMicrotask(this.remove.bind(this));
+        link.parentNode.removeChild(link);
+      });
+      link.click();
+    };
+
+    if (this._writeMode === "fs") {
+      if (!!window["webkitRequestFileSystem"]) {
+        anchor.href = this._fileEntry.toURL();
+        finish(anchor);
+      } else {
+        this._fileEntry.file((file) => {
+          anchor.href = (window.URL || window.webkitURL).createObjectURL(file);
+          finish(anchor);
+        });
+      }
+    } else if (this._writeMode === "mem") {
+      let blob = new Blob(this._memoryStorage, { type: this._type });
+
+      anchor.href = (window.URL || window.webkitURL).createObjectURL(blob);
+
+      finish(anchor);
+    }
   }
 
-  private _finish() {
+  public remove() {
+    let self = this;
+    return new Promise<void>((resolve, reject) => {
+      if (self._writeMode === "fs") {
+        self._fs.root.getFile(
+          self._localName,
+          { create: false },
+          (fileEntry) => {
+            fileEntry.remove(
+              () => {
+                console.log("Temporary file removed.");
+                console.log("File:", self._localName);
+                self.emit("finish");
+                self = null;
+                resolve();
+              },
+              (err) => {
+                self.emit("error", err);
+                self = null;
+              }
+            );
+          },
+          (err) => {
+            self.emit("error", err);
+            self = null;
+          }
+        );
+      } else if (self._writeMode === "mem") {
+        self.emit("finish");
+        self = null;
+      }
+    });
+  }
+
+  public destroy() {
+    this.emit("done");
+
     // clean up
+    // all these values are not reusable,
+    // so its better to free memory.
+    this._mode = null;
+    this._file = null;
+    this._localName = null;
+    this._name = null;
+    this._type = null;
+    this._size = null;
+    this._pieces = null;
+    this._pieceLength = null;
+    this._memoryStorage = null;
+    this._showSaveFilePicker = null;
+    this._requestFileSystem = null;
+    this._fs = null;
+    this._writeMode = null;
+    this._bytesWritten = 0;
+    this._bytesRead = 0;
+
+    // this is reset
+    this._create = true;
+
+    // just a way to check if this function was called or not.
+    this._destroyed = true;
+    this.emit("destroy");
   }
 
   on(evt: "progress", callback: (progress: number) => void): this;
-  on(evt: "done", callback: (done: boolean) => void): this;
+  on(evt: "done", callback: () => void): this;
   on(evt: "ready", callback: () => void): this;
   on(evt: "error", callback: (error: Error) => void): this;
   on(evt: "data", callback: (data: any) => void): this;
+  on(evt: "destroy", callback: () => void): this;
+  on(evt: string | symbol, callback: (...args: any[]) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.on(evt, callback);
   }
 
   once(evt: "progress", callback: (progress: number) => void): this;
-  once(evt: "done", callback: (done: boolean) => void): this;
+  once(evt: "done", callback: () => void): this;
   once(evt: "ready", callback: () => void): this;
   once(evt: "error", callback: (error: Error) => void): this;
   once(evt: "data", callback: (data: any) => void): this;
+  once(evt: "destroy", callback: () => void): this;
+  once(evt: string | symbol, callback: (...args: any[]) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.on(evt, callback);
   }
 
   emit(evt: "progress", progress: number): boolean;
-  emit(evt: "done", done: boolean): boolean;
+  emit(evt: "done"): boolean;
   emit(evt: "ready"): boolean;
   emit(evt: "error", error: Error): boolean;
   emit(evt: "data", value: any): boolean;
+  emit(evt: "destroy"): boolean;
+  emit(evt: string | symbol, ...args: any[]): boolean;
   emit(evt: string | symbol, ...args: any[]): boolean {
     return super.emit(evt, ...args);
   }

@@ -1,4 +1,8 @@
 // todo: Refactor code ♻
+// note: When refactoring code, improve wrtc instance clean up
+// note: which includes removing event listeners.
+
+// todo: Implement switch room feature.
 import { FC, Fragment, useEffect, useRef, useState } from "react";
 import { TopNav, TopNavItem, TopNavItemContainer } from "./TopNav";
 import "./Room.css";
@@ -8,7 +12,7 @@ import { Header } from "./Header";
 import Modal from "./Modal";
 import { Socket } from "socket.io-client";
 import { useSocket } from "../hooks/useSocket";
-import { WRTC } from "../helpers/wrtc";
+import { Metadata, WRTC } from "../helpers/wrtc";
 
 declare interface Props extends RouteComponentProps<{ id: string }> {
   setTheme: Function;
@@ -20,9 +24,12 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   const [switchModal, setSwitchModal] = useState(false);
   const [peers, setPeers] = useState([]);
   const [fileConfirm, setFileConfirm] = useState(false);
+  const [incomingFile, setIncomingFile] = useState(false);
 
   const socketRef = useRef<Socket>(useSocket());
   const switchRoomInputRef = useRef<HTMLInputElement>();
+  const downloadTrafficRef = useRef<SVGPathElement>();
+  const uploadTrafficRef = useRef<SVGPathElement>();
 
   /**
    * WRTC object has properties:
@@ -38,8 +45,18 @@ const Room: FC<Props> = ({ setTheme, match }) => {
    * WRTC object events:
    * * signal - ready to signal ICE to peer.
    * * data - receiving binary data
+   * * progress - indicates the progress of file transfer [0-1] range.
+   * * close - emitted when wrtc data channel is closed.
+   * * closing - emitted when wrtc data channel is closing. (only available in some browsers)
+   * * error - emitted when wrtc catches an error.
+   * * answer - emitted when a signal is received and an answer is created.
+   * * connectionstatechange - emitted when the wrtc connection state changes.
+   * * iceconnectionstatechange - emitted when wrtc ice connection state changes.
+   * * icegathetingerror - emitted when there is an error gathering ice candidates.
+   * * incoming - emitted when a peer wants to share a file.
+   * * open - emitted when the wrtc data channel is opened and ready to send/receive data.
    */
-  const [wrtcPool, setWrtcPool] = useState<Map<string, WRTC>>(new Map());
+  const wrtcPool = useRef<Map<string, WRTC>>(new Map());
   const [confirmationInfo, setConfirmatioInfo] =
     useState<{ id: string; file: File }>(null);
 
@@ -69,10 +86,10 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
             setPeers((_peers) => {
               for (let p of peers) {
-                wrtcPool.set(
-                  p.peerId,
-                  new WRTC(socketRef.current.id, p.peerId)
-                );
+                let wrtc = new WRTC(socketRef.current.id, p.peerId);
+                wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
+                wrtc.on("error", console.error);
+                wrtcPool.current.set(p.peerId, wrtc);
               }
 
               return peers;
@@ -84,25 +101,26 @@ const Room: FC<Props> = ({ setTheme, match }) => {
         });
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, wrtcPool]);
 
   const onSignal = (signal: string, from: string) => {
-    if (!wrtcPool.has(from)) {
+    if (!wrtcPool.current.has(from)) {
       console.warn("Received signal from unknown peer: " + from);
       console.warn("Received signal: " + signal);
       return;
     }
 
-    let wrtc = wrtcPool.get(from);
+    let wrtc = wrtcPool.current.get(from);
 
     wrtc.once("answer", (answer) => {
       socketRef.current.emit("answer", answer);
-      window["dc"] = wrtcPool.get(from);
+      window["dc"] = wrtcPool.current.get(from);
     });
 
-    wrtc.on("close", () => {
+    wrtc.once("close", () => {
       console.log("data channel closed.");
-      wrtc.peerConnection.close();
+      wrtc.close();
     });
 
     wrtc.connect(new RTCSessionDescription(JSON.parse(signal)));
@@ -119,14 +137,17 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   }) => {
     // do someting
     console.log("new peer", peer);
-    wrtcPool.set(peer.peerId, new WRTC(socketRef.current.id, peer.peerId));
+    let wrtc = new WRTC(socketRef.current.id, peer.peerId);
+    wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
+    wrtc.on("error", console.error);
+    wrtcPool.current.set(peer.peerId, wrtc);
     setPeers((peers) => [...peers, peer]);
   };
 
   const onPeerExit = (peerId: string) => {
     // do something
     console.log("peer exit", peerId);
-    wrtcPool.delete(peerId);
+    wrtcPool.current.delete(peerId);
     setPeers((peers) => peers.filter((p) => p.peerId !== peerId));
   };
 
@@ -149,6 +170,8 @@ const Room: FC<Props> = ({ setTheme, match }) => {
             peerId: p.peerId,
             avatarId: p.avatarId,
             nickname, // register new nickname
+            progress: p.progess,
+            activeProgess: p.activeProgess,
           };
         }
 
@@ -162,6 +185,41 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       socketRef.current.emit("new-nickname", nickname);
     }
   };
+
+  const onIncomingFile = (id: string, metadata: Metadata) => {
+    let result = window.confirm(
+      `Accept incoming file: ${metadata.filename} from: ${id}`
+    );
+    if (result) {
+      let wrtc = wrtcPool.current.get(id);
+      wrtc.acceptFile(metadata);
+      let lastRecorded = 0;
+      wrtc.on("progress", (progress) => {
+        console.log(progress);
+        let currentTime = new Date().getTime();
+        let elapsedTime = currentTime - lastRecorded;
+        if (progress >= 1) {
+          downloadTrafficRef.current.classList.remove("active");
+          lastRecorded = null;
+          elapsedTime = null;
+          currentTime = null;
+        } else if (elapsedTime > 500) {
+          downloadTrafficRef.current.classList.toggle("active");
+          lastRecorded = currentTime;
+        }
+      });
+    } else {
+      wrtcPool.current.get(id).rejectFile(metadata);
+    }
+    // incomingFiles.set(id, metadata);
+    // toggleIncomingFileModal();
+  };
+
+  const toggleIncomingFileModal = () => {
+    setIncomingFile((b) => !b);
+  };
+
+  const acceptIncomingFile = () => {};
 
   const toggleSwitchModal = () => {
     setSwitchModal((b) => !b);
@@ -181,9 +239,9 @@ const Room: FC<Props> = ({ setTheme, match }) => {
           setPeers(peers);
         } else {
           // todo: Route to error page ❌
-          // todo: instead of an error page,
-          // todo: allow user to copy and paste 📝
-          // todo: ice candidate and manually connect
+          // note: instead of an error page,
+          // note: allow user to copy and paste 📝
+          // note: ice candidate and manually connect
           alert("Could not join room");
         }
       });
@@ -204,20 +262,20 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     toggleFileModal();
   };
 
-  const readFile = (file: File, id: string) => {
-    const reader = file.stream().getReader();
-    const read = async () => {
-      let { value, done } = await reader.read();
+  // const readFile = (file: File, id: string) => {
+  //   const reader = file.stream().getReader();
+  //   const read = async () => {
+  //     let { value, done } = await reader.read();
 
-      if (done) return console.log("done");
+  //     if (done) return console.log("done");
 
-      wrtcPool.get(id).send(value.buffer);
+  //     wrtcPool.get(id).sendBinary(value.buffer);
 
-      return read();
-    };
+  //     return read();
+  //   };
 
-    read();
-  };
+  //   read();
+  // };
 
   const toggleFileModal = () => {
     if (fileConfirm && confirmationInfo !== null) {
@@ -235,7 +293,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     // 1. negotiate file share with peer
     // check if we actually have a current file confirmation
     if (confirmationInfo !== null) {
-      let wrtc = wrtcPool.get(confirmationInfo.id);
+      let wrtc = wrtcPool.current.get(confirmationInfo.id);
 
       wrtc.once("signal", (signal) => {
         console.log(signal);
@@ -258,19 +316,44 @@ const Room: FC<Props> = ({ setTheme, match }) => {
               .then(() => console.log("Answer set as remote description."))
               .catch(console.error)
               .finally(() => {
-                // todo: remove when done testing
-
                 wrtc.on("open", () => {
                   console.log("data channel opened.");
-                  readFile(confirmationInfo.file, confirmationInfo.id);
+                  // readFile(confirmationInfo.file, confirmationInfo.id);
+                  wrtc.setFile(confirmationInfo.file).then(() => {
+                    wrtc.sendJson({
+                      type: "file",
+                      payload: {
+                        pieces: wrtc.file.pieces,
+                        pieceLength: wrtc.file.pieceLength,
+                        filename: wrtc.file.name,
+                        type: wrtc.file.type,
+                        size: wrtc.file.size,
+                      },
+                    });
+                    let lastRecorded = 0;
+                    wrtc.on("progress", (progress) => {
+                      console.log(progress);
+                      let currentTime = new Date().getTime();
+                      let elapsedTime = currentTime - lastRecorded;
+                      if (progress >= 1) {
+                        uploadTrafficRef.current.classList.remove("active");
+                        lastRecorded = null;
+                        elapsedTime = null;
+                        currentTime = null;
+                      } else if (elapsedTime > 500) {
+                        uploadTrafficRef.current.classList.toggle("active");
+                        lastRecorded = currentTime;
+                      }
+                    });
+                  });
+                });
+
+                wrtc.once("close", () => {
+                  console.log("data channel closed.");
+                  wrtc.close();
                 });
               });
           });
-        });
-
-        wrtc.on("close", () => {
-          console.log("data channel closed.");
-          wrtc.peerConnection.close();
         });
       });
 
@@ -285,7 +368,8 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       return (
         <Avatar
           key={index}
-          id={peer.avatarId}
+          avatarId={peer.avatarId}
+          id={peer.peerId}
           disableEdit={false}
           prefix="You"
           peerId={peer.peerId}
@@ -296,7 +380,8 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     return (
       <Avatar
         key={index}
-        id={peer.avatarId}
+        avatarId={peer.avatarId}
+        id={peer.peerId}
         disableEdit={true}
         customNickname={peer.nickname}
         peerId={peer.peerId}
@@ -339,6 +424,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
               xmlns="http://www.w3.org/2000/svg"
             >
               <path
+                ref={downloadTrafficRef}
                 className="secondary-path traffic-arrow"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -346,6 +432,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                 d="M12 17l-4 4m0 0l-4-4m4 4V3"
               />
               <path
+                ref={uploadTrafficRef}
                 className="primary-path traffic-arrow"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -446,6 +533,12 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       >
         {/* put file card in here */}
       </Modal>
+      <Modal
+        isOpen={incomingFile}
+        onClose={toggleIncomingFileModal}
+        onSubmit={acceptIncomingFile}
+        title="Incoming FIle"
+      ></Modal>
     </Fragment>
   );
 };

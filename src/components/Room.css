@@ -1,9 +1,19 @@
 .topnav .item-container .item:hover .secondary-path.traffic-arrow {
+  transition: color 0.1s ease !important;
   color: var(--pink-light);
 }
 
 .topnav .item-container .item:hover .primary-path.traffic-arrow {
+  transition: color 0.1s ease !important;
   color: var(--blue-light);
+}
+
+.secondary-path.traffic-arrow.active {
+  color: var(--pink-light) !important;
+}
+
+.primary-path.traffic-arrow.active {
+  color: var(--blue-light) !important;
 }
 
 .peer-field {
