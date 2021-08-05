@@ -1,13 +1,3 @@
-.notification-wrapper {
-  position: fixed;
-  z-index: 100;
-  bottom: 0;
-  right: 0;
-  margin: 1rem;
-  max-height: 40%;
-  overflow-y: auto;
-}
-
 .notification {
   margin: 0 0.5rem 1rem 0;
   padding: 1rem;
@@ -16,6 +6,57 @@
   background-color: var(--background);
   position: relative;
   overflow: hidden;
+  cursor: pointer;
+  width: 450px;
+  transition: all 0.3s ease;
+  animation: slide-left 0.4s;
+  animation-fill-mode: forwards;
+}
+
+.notification.exit {
+  animation: slide-right 0.4s;
+  animation-fill-mode: forwards;
+}
+
+@keyframes slide-left {
+  0% {
+    margin-left: 120%;
+  }
+
+  100% {
+    margin-left: 0;
+  }
+}
+
+@keyframes slide-right {
+  0% {
+    margin-left: 0;
+  }
+
+  100% {
+    margin-left: 120%;
+  }
+}
+
+@media (max-width: 1023.99px) {
+  .notification {
+    width: 300px;
+  }
+}
+
+@media (min-width: 2400px) {
+  .notification {
+    width: 650px;
+  }
+}
+
+.notification .title {
+  font-size: var(--h-font-size);
+  font-weight: 600;
+}
+
+.notification .message {
+  font-size: var(--font-size);
 }
 
 .notification .side-bar {
@@ -28,4 +69,16 @@
 
 .notification.info .side-bar {
   background-color: var(--blue);
+}
+
+.notification.success .side-bar {
+  background-color: var(--green);
+}
+
+.notification.warning .side-bar {
+  background-color: var(--orange);
+}
+
+.notification.error .side-bar {
+  background-color: var(--red);
 }

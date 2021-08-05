@@ -38,8 +38,6 @@ export class Timer extends EventEmitter {
     this._delay -= Date.now() - this._start;
   }
 
-  public resume() {}
-
   public clear() {
     clearTimeout(this._timeoutId);
   }

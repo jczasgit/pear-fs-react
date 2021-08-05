@@ -155,3 +155,21 @@ body {
 #root {
   height: 100%;
 }
+
+.notification-wrapper {
+  position: fixed;
+  z-index: 100;
+  bottom: 0;
+  right: 0;
+  margin: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 10px;
+  transition: all 0.3s ease;
+}
+
+@media (max-width: 1023.99px) {
+  .notification-wrapper {
+    max-height: 30vh;
+  }
+}

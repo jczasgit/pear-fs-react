@@ -91,6 +91,7 @@ export class WRTC extends EventEmitter {
       });
       this._file.on("data", (data) => {
         if (data === null) {
+          this.emit("done", this._file.name);
           this.sendJson({
             type: "done",
             payload: {},
@@ -141,7 +142,7 @@ export class WRTC extends EventEmitter {
       this._dataChannel.close();
     });
     this._file.on("error", (error) => {
-      console.error(error);
+      this.emit("error", error);
     });
 
     this._file.init();
@@ -313,13 +314,7 @@ export class WRTC extends EventEmitter {
     }
   }
 
-  /**
-   * Writes binary data into file.
-   * Since this WRTC can handle multiple file transfers,
-   * a specific file needs to be passed to this function.
-   * @param {ArrayBuffer} chunk
-   */
-  private _write(chunk: ArrayBuffer) {
+  private _write(chunk: Blob) {
     let self = this;
     this._file.write(chunk).then(() => {
       queueMicrotask(() => {
@@ -340,12 +335,14 @@ export class WRTC extends EventEmitter {
         this._incomingFile(json.payload);
         break;
       case "download":
-        this._file.read(true);
+        this._file.read(false);
         break;
       case "reject":
+        this.emit("reject", this._file.name);
         this._file.destroy();
         break;
       case "done":
+        this.emit("done", this._file.name);
         this._file.save();
         break;
       default:
@@ -398,6 +395,8 @@ export class WRTC extends EventEmitter {
   on(evt: "icegathetingerror", callback: (err: any) => void): this;
   on(evt: "incoming", callback: (metadata: Metadata) => void): this;
   on(evt: "progress", callback: (progress: number) => void): this;
+  on(evt: "done", callback: (filename: string) => void): this;
+  on(evt: "reject", callback: (filename: string) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.on(evt, callback);
@@ -413,6 +412,8 @@ export class WRTC extends EventEmitter {
   once(evt: "icegathetingerror", callback: (err: any) => void): this;
   once(evt: "incoming", callback: (metadata: Metadata) => void): this;
   once(evt: "progress", callback: (progress: number) => void): this;
+  once(evt: "done", callback: (filename: string) => void): this;
+  once(evt: "reject", callback: (filename: string) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.once(evt, callback);
@@ -429,6 +430,8 @@ export class WRTC extends EventEmitter {
   off(evt: "icegathetingerror", callback: (err: any) => void): this;
   off(evt: "incoming", callback: (metadata: Metadata) => void): this;
   off(evt: "progress", callback: (progress: number) => void): this;
+  off(evt: "done", callback: (filename: string) => void): this;
+  off(evt: "reject", callback: (filename: string) => void): this;
   off(evt: string | symbol, callback: (...args: any[]) => void): this;
   off(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.off(evt, callback);
@@ -445,6 +448,8 @@ export class WRTC extends EventEmitter {
   emit(evt: "icegathetingerror", err: any): boolean;
   emit(evt: "incoming", metadata: Metadata): boolean;
   emit(evt: "progress", progress: number): boolean;
+  emit(evt: "done", filename: string): boolean;
+  emit(evt: "reject", filename: string): boolean;
   emit(evt: string | symbol, ...args: any[]): boolean;
   emit(evt: string | symbol, ...args: any[]): boolean {
     return super.emit(evt, ...args);

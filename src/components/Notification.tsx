@@ -36,22 +36,53 @@ export const Notification: FC<NotificationProps> = ({
 
   useEffect(() => {
     timerRef.current.once("timeout", (_id) => {
-      console.log(`Timer for: ${_id}`);
+      // console.log(`Timer for: ${_id}`);
       setExit(true);
-      //   queueMicrotask(() => {
-      //     dispatch({
-      //       type: "REMOVE_NOTIFICATION",
-      //       id: _id,
-      //     });
-      //   });
+      setTimeout(
+        queueMicrotask.bind(
+          null,
+          dispatch.bind(null, {
+            type: "REMOVE_NOTIFICATION",
+            id: _id,
+          })
+        ),
+        500
+      );
     });
 
     timerRef.current.start();
   }, [dispatch]);
 
+  const dismiss = () => {
+    timerRef.current.pause();
+    timerRef.current.removeAllListeners("timeout");
+    setExit(true);
+    setTimeout(
+      queueMicrotask.bind(
+        null,
+        dispatch.bind(null, {
+          type: "REMOVE_NOTIFICATION",
+          id,
+        })
+      ),
+      500
+    );
+  };
+
   return (
     <>
-      <div className={`notification ${type} ${exit ? "exit" : ""}`}>
+      <div
+        className={`notification ${type} ${exit ? "exit" : ""}`}
+        onClick={dismiss}
+        onMouseEnter={() => {
+          console.log("enter");
+          timerRef.current.pause();
+        }}
+        onMouseLeave={() => {
+          console.log("leave");
+          timerRef.current.start();
+        }}
+      >
         <div className="title">
           <span>{title}</span>
         </div>

@@ -17,6 +17,7 @@ import queueMicrotask from "queue-microtask";
 import { FileCard } from "./FileCard";
 import { useNotification } from "../hooks/useNotification";
 import { nanoid } from "nanoid";
+import { Loading } from "./Loading";
 
 declare interface Props extends RouteComponentProps<{ id: string }> {
   setTheme: Function;
@@ -29,6 +30,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   const [peers, setPeers] = useState([]);
   const [fileConfirm, setFileConfirm] = useState(false);
   const [incomingFileModal, setIncomingFileModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const socketRef = useRef<Socket>(useSocket());
   const notification = useNotification();
@@ -73,15 +75,32 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   useEffect(() => {
     if (socketRef.current.disconnected) {
       socketRef.current.connect();
+      let timeoutId = setTimeout(() => {
+        timeoutId = null;
+        notification({
+          type: "ADD_NOTIFICATION",
+          payload: {
+            id: nanoid(),
+            lifeSpan: 5000,
+            message:
+              "Could not reach signaling server. Please try again later.",
+            title: "Signal Server Error",
+            type: "error",
+          },
+        });
+      }, 10000);
       socketRef.current.emit("greetings");
       socketRef.current.once("greetings", (id) => {
-        console.log("greetings from server");
+        clearTimeout(timeoutId);
+        timeoutId = null;
+        setLoading(false);
+        // console.log("greetings from server");
         if (socketRef.current.id !== id) socketRef.current.id = id;
 
         socketRef.current.emit("join-room", roomId);
         socketRef.current.once("room-joined", ({ joined, roomId, peers }) => {
           if (joined) {
-            console.log("Join room: " + roomId);
+            // console.log("Join room: " + roomId);
             socketRef.current
               .off("new-peer", onNewPeer)
               .on("new-peer", onNewPeer);
@@ -96,26 +115,38 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
             setPeers((_peers) => {
               for (let p of peers) {
-                notification({
-                  type: "ADD_NOTIFICATION",
-                  payload: {
-                    id: nanoid(),
-                    title: "New Peer",
-                    lifeSpan: 2000,
-                    message: "A new peer has joined!",
-                    type: "info",
-                  },
-                });
                 let wrtc = new WRTC(socketRef.current.id, p.peerId);
                 wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
-                wrtc.on("error", console.error);
+                wrtc.on("error", (err) => {
+                  notification({
+                    type: "ADD_NOTIFICATION",
+                    payload: {
+                      id: nanoid(),
+                      lifeSpan: 5000,
+                      message:
+                        "An error occurred during peer to peer connection.",
+                      title: "WebRTC Error",
+                      type: "error",
+                    },
+                  });
+                  console.error(err);
+                });
                 wrtcPool.current.set(p.peerId, wrtc);
               }
 
               return peers;
             });
           } else {
-            alert("Could not join room: " + roomId);
+            notification({
+              type: "ADD_NOTIFICATION",
+              payload: {
+                id: nanoid(),
+                lifeSpan: 5000,
+                message: "Could not join room.",
+                title: "Error",
+                type: "error",
+              },
+            });
             // todo: route to error page
           }
         });
@@ -125,6 +156,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   }, [roomId, wrtcPool]);
 
   const onSignal = (signal: string, from: string) => {
+    // note: conncetion offer from a peer
     if (!wrtcPool.current.has(from)) {
       console.warn("Received signal from unknown peer: " + from);
       console.warn("Received signal: " + signal);
@@ -143,6 +175,19 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       wrtc.close();
     });
 
+    wrtc.once("done", (filename: string) => {
+      notification({
+        type: "ADD_NOTIFICATION",
+        payload: {
+          id: nanoid(),
+          lifeSpan: 5000,
+          message: `File: ${filename}\nstarted downloading from peer.`,
+          title: "File Download",
+          type: "success",
+        },
+      });
+    });
+
     wrtc.connect(new RTCSessionDescription(JSON.parse(signal)));
   };
 
@@ -159,7 +204,19 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     console.log("new peer", peer);
     let wrtc = new WRTC(socketRef.current.id, peer.peerId);
     wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
-    wrtc.on("error", console.error);
+    wrtc.on("error", (err) => {
+      notification({
+        type: "ADD_NOTIFICATION",
+        payload: {
+          id: nanoid(),
+          lifeSpan: 5000,
+          message: "An error occurred during peer to peer connection.",
+          title: "WebRTC Error",
+          type: "error",
+        },
+      });
+      console.error(err);
+    });
     wrtcPool.current.set(peer.peerId, wrtc);
     setPeers((peers) => [...peers, peer]);
   };
@@ -212,6 +269,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       return;
     } else {
       currentIncomingFileRef.current = { id, metadata };
+      console.log(currentIncomingFileRef.current);
       setIncomingFileModal(true);
     }
   };
@@ -223,6 +281,19 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     wrtc.acceptFile(currentIncomingFileRef.current.metadata);
     let lastRecorded = 0;
     wrtc.on("progress", (progress) => {
+      if (lastRecorded === 0) {
+        notification({
+          type: "ADD_NOTIFICATION",
+          payload: {
+            id: nanoid(),
+            lifeSpan: 5000,
+            message: `File downloading...`,
+            title: "File Download",
+            type: "info",
+          },
+        });
+      }
+
       let currentTime = new Date().getTime();
       let elapsedTime = currentTime - lastRecorded;
       if (progress >= 1) {
@@ -235,29 +306,28 @@ const Room: FC<Props> = ({ setTheme, match }) => {
         lastRecorded = currentTime;
       }
     });
+
+    checkIncomingFilesQueue();
   };
 
-  const closeIncomingFileModal = (
-    _: React.MouseEvent<Element, MouseEvent>,
-    closeAndReject: boolean = true
-  ) => {
+  const checkIncomingFilesQueue = async () => {
+    if (incomingFilesRef.current.length > 0) {
+      currentIncomingFileRef.current = incomingFilesRef.current.shift();
+      queueMicrotask(() => {
+        setIncomingFileModal(true);
+      });
+    }
+  };
+
+  const closeIncomingFileModal = (_: any, closeAsReject: boolean = true) => {
     setIncomingFileModal(false);
 
     // check if there are more incoming files
-    if (currentIncomingFileRef.current !== null) {
-      if (closeAndReject) {
-        wrtcPool.current
-          .get(currentIncomingFileRef.current.id)
-          .rejectFile(currentIncomingFileRef.current.metadata);
-      }
-      if (incomingFilesRef.current.length > 0) {
-        currentIncomingFileRef.current = incomingFilesRef.current.shift();
-        queueMicrotask(() => {
-          setIncomingFileModal(true);
-        });
-      } else {
-        currentIncomingFileRef.current = null;
-      }
+    if (currentIncomingFileRef.current !== null && closeAsReject) {
+      wrtcPool.current
+        .get(currentIncomingFileRef.current.id)
+        .rejectFile(currentIncomingFileRef.current.metadata);
+      checkIncomingFilesQueue();
     }
   };
 
@@ -282,13 +352,30 @@ const Room: FC<Props> = ({ setTheme, match }) => {
           // note: instead of an error page,
           // note: allow user to copy and paste 📝
           // note: ice candidate and manually connect
-          alert("Could not join room");
+          notification({
+            type: "ADD_NOTIFICATION",
+            payload: {
+              id: nanoid(),
+              lifeSpan: 5000,
+              message: "Could not join room.",
+              title: "Error",
+              type: "error",
+            },
+          });
         }
       });
     } else {
-      alert(
-        "Invalid room id. Only Alphanumeric characters are allowed and with length of 8 characters."
-      );
+      notification({
+        type: "ADD_NOTIFICATION",
+        payload: {
+          id: nanoid(),
+          lifeSpan: 5000,
+          message:
+            "Invalid room id. Only Alphanumeric characters are allowed and with length of 8 characters.",
+          title: "Error",
+          type: "error",
+        },
+      });
     }
   };
 
@@ -314,6 +401,20 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   };
 
   const onFileConfirmed = () => {
+    // note: sending file to
+
+    // notify the use that we are waiting for peer to accept file
+    notification({
+      type: "ADD_NOTIFICATION",
+      payload: {
+        id: nanoid(),
+        lifeSpan: 5000,
+        message: "Waiting for peer to accept file.",
+        title: "Info",
+        type: "info",
+      },
+    });
+
     // start file share
     // 1. negotiate file share with peer
     // check if we actually have a current file confirmation
@@ -321,9 +422,9 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       let wrtc = wrtcPool.current.get(confirmationInfo.id);
 
       wrtc.once("signal", (signal) => {
-        console.log(signal);
+        // console.log(signal);
 
-        console.log("Ping peer " + confirmationInfo.id);
+        // console.log("Ping peer " + confirmationInfo.id);
         socketRef.current.emit("ping-peer", confirmationInfo.id);
 
         let timeout = setTimeout(() => {
@@ -343,7 +444,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
               .finally(() => {
                 wrtc.on("open", () => {
                   console.log("data channel opened.");
-                  // readFile(confirmationInfo.file, confirmationInfo.id);
+
                   wrtc.setFile(confirmationInfo.file).then(() => {
                     wrtc.sendJson({
                       type: "file",
@@ -355,8 +456,22 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                         size: wrtc.file.size,
                       },
                     });
+
                     let lastRecorded = 0;
                     wrtc.on("progress", (progress) => {
+                      if (lastRecorded === 0) {
+                        notification({
+                          type: "ADD_NOTIFICATION",
+                          payload: {
+                            id: nanoid(),
+                            lifeSpan: 5000,
+                            message: "File share started.",
+                            title: "File Share",
+                            type: "info",
+                          },
+                        });
+                      }
+
                       let currentTime = new Date().getTime();
                       let elapsedTime = currentTime - lastRecorded;
                       if (progress >= 1) {
@@ -368,6 +483,32 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                         uploadTrafficRef.current.classList.toggle("active");
                         lastRecorded = currentTime;
                       }
+                    });
+
+                    wrtc.once("done", (filename: string) => {
+                      notification({
+                        type: "ADD_NOTIFICATION",
+                        payload: {
+                          id: nanoid(),
+                          lifeSpan: 5000,
+                          message: `File: ${filename}\ndone sharing!`,
+                          title: "File Done",
+                          type: "success",
+                        },
+                      });
+                    });
+
+                    wrtc.once("reject", (filename: string) => {
+                      notification({
+                        type: "ADD_NOTIFICATION",
+                        payload: {
+                          id: nanoid(),
+                          lifeSpan: 5000,
+                          message: `File: ${filename}\nrejected by peer.`,
+                          title: "File Rejected",
+                          type: "warning",
+                        },
+                      });
                     });
                   });
                 });
@@ -577,6 +718,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
           }
         />
       </Modal>
+      <Loading exit={!loading} withTimeout={true} />
     </Fragment>
   );
 };
