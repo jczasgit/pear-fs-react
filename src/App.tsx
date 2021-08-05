@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Switch } from "react-router-dom";
 import { Load } from "./components/Load";
 import Room from "./components/Room";
 import { SocketProvider } from "./hooks/useSocket";
+import { NotificationProvider } from "./hooks/useNotification";
 
 function App() {
   const themeRef = useRef<string>(
@@ -36,23 +37,25 @@ function App() {
 
   return (
     <SocketProvider url="http://localhost:3001">
-      <BrowserRouter>
-        <Switch>
-          <Route path="/" exact component={Load} />
-          <Route
-            path="/room/:id"
-            render={(props) => (
-              <Room
-                setTheme={toggleTheme}
-                history={props.history}
-                location={props.location}
-                match={props.match}
-                staticContext={props.staticContext}
-              />
-            )}
-          />
-        </Switch>
-      </BrowserRouter>
+      <NotificationProvider>
+        <BrowserRouter>
+          <Switch>
+            <Route path="/" exact component={Load} />
+            <Route
+              path="/room/:id"
+              render={(props) => (
+                <Room
+                  setTheme={toggleTheme}
+                  history={props.history}
+                  location={props.location}
+                  match={props.match}
+                  staticContext={props.staticContext}
+                />
+              )}
+            />
+          </Switch>
+        </BrowserRouter>
+      </NotificationProvider>
     </SocketProvider>
   );
 }

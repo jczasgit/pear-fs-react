@@ -1,0 +1,31 @@
+.notification-wrapper {
+  position: fixed;
+  z-index: 100;
+  bottom: 0;
+  right: 0;
+  margin: 1rem;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.notification {
+  margin: 0 0.5rem 1rem 0;
+  padding: 1rem;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  background-color: var(--background);
+  position: relative;
+  overflow: hidden;
+}
+
+.notification .side-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 10px;
+  height: 100%;
+}
+
+.notification.info .side-bar {
+  background-color: var(--blue);
+}

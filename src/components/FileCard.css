@@ -1,0 +1,16 @@
+.file-card {
+  display: flex;
+  align-items: center;
+  max-width: 80%;
+}
+
+.file-card .card-thumbnail > img {
+  width: var(--nav-width);
+  max-width: 70px;
+  height: var(--nav-width);
+  max-height: 70px;
+}
+
+.file-card .card-content {
+  font-size: var(--font-size);
+}

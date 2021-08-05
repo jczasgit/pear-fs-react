@@ -134,7 +134,6 @@ export class WRTC extends EventEmitter {
     });
     this._file.once("done", () => {
       console.log("File download done.");
-      console.log(this._file);
     });
     this._file.once("destroy", () => {
       console.log("File destroyed.");

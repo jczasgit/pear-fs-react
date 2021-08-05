@@ -9,6 +9,9 @@
 
 import { EventEmitter } from "events";
 import queueMicrotask from "queue-microtask";
+import toBuffer from "blob-to-buffer";
+import streamSaver from "streamsaver";
+import { promisify } from "util";
 
 export type NativeFile = File;
 export type FileMode = 0x1 | 0x2;
@@ -26,7 +29,6 @@ export class CustomFile extends EventEmitter {
   private _mode: number;
   private _file: NativeFile;
   private _memoryStorage: Array<any>;
-  private _showSaveFilePicker: any;
   private _requestFileSystem: any;
   private _fs: any;
   private _name: string;
@@ -36,8 +38,10 @@ export class CustomFile extends EventEmitter {
   private _pieces: number;
   private _pieceLength: number;
   private _readStream: ReadableStream;
+  private _writeStream: any; // WritableStream
+  private _writer: any; // Default writable stream writer
   private _reader: ReadableStreamDefaultReader;
-  private _writeMode: "fs" | "mem";
+  private _writeMode: "fs" | "mem" | "stream";
   private _create: boolean;
   private _fileEntry: any;
   private _bytesWritten: number;
@@ -56,7 +60,6 @@ export class CustomFile extends EventEmitter {
     this._pieces = opts.pieces;
     this._pieceLength = opts.pieceLength;
     this._memoryStorage = null; // do not create one before its needed.
-    this._showSaveFilePicker = window["showSaveFilePicker"];
     this._requestFileSystem =
       window["requestFileSystem"] || window["webkitRequestFileSystem"];
     this._fs = null; // this is assigned when the file system is available.
@@ -65,6 +68,10 @@ export class CustomFile extends EventEmitter {
     this._destroyed = false;
     this._bytesWritten = 0;
     this._bytesRead = 0;
+    this._writeStream = null;
+    this._writer = null;
+    this._readStream = null;
+    this._reader = null;
 
     this.on("finish", this.destroy.bind(this));
   }
@@ -88,6 +95,10 @@ export class CustomFile extends EventEmitter {
     return this._pieceLength;
   }
 
+  get destroyed(): boolean {
+    return this._destroyed;
+  }
+
   public async init() {
     try {
       switch (this._mode) {
@@ -100,6 +111,16 @@ export class CustomFile extends EventEmitter {
             console.log("Using memory storage for files less than 500mb.");
             this._memoryStorage = [];
             this._writeMode = "mem";
+            this.emit("ready");
+            return;
+          }
+
+          if (streamSaver.supported && streamSaver.createWriteStream) {
+            console.log("Using stream write mode.");
+            this._writeMode = "stream";
+            this._writeStream = streamSaver.createWriteStream(this._name, {
+              size: this._size,
+            });
             this.emit("ready");
             return;
           }
@@ -163,6 +184,8 @@ export class CustomFile extends EventEmitter {
   public write(chunk: any) {
     // todo: handle the write according to browser support
     switch (this._writeMode) {
+      case "stream":
+        return this._writeStm(chunk);
       case "mem":
         return this._writeMem(chunk);
       case "fs":
@@ -171,6 +194,27 @@ export class CustomFile extends EventEmitter {
         this.emit("error", new Error("No write mode set."));
         return Promise.resolve();
     }
+  }
+
+  private async _writeStm(chunk: any) {
+    if (!this._writeStream) {
+      this.emit("error", new Error("Cannot write before init is called."));
+      return;
+    }
+
+    if (!this._writer) this._writer = this._writeStream.getWriter();
+
+    let tobuffer = promisify(toBuffer);
+
+    let buffer = await tobuffer(chunk);
+
+    await this._writer.write(buffer);
+
+    this._bytesWritten += buffer.length;
+
+    this.emit("progress", this._bytesWritten / this._size);
+
+    return;
   }
 
   private async _writeMem(chunk: any) {
@@ -247,7 +291,19 @@ export class CustomFile extends EventEmitter {
 
       let self = this;
       this._reader.read().then(({ value, done }) => {
-        if (done) self.emit("data", null);
+        if (done) {
+          try {
+            self._reader.cancel().then(() => {
+              self._readStream.cancel().then(() => {
+                self._reader = null;
+                self._readStream = null;
+              });
+            });
+          } catch (error) {
+            self.emit("error", error);
+          }
+          self.emit("data", null);
+        }
 
         self._bytesRead += value.bytesLenght;
         self.emit("data", value);
@@ -273,7 +329,11 @@ export class CustomFile extends EventEmitter {
       link.click();
     };
 
-    if (this._writeMode === "fs") {
+    if (this._writeMode === "stream") {
+      this._writer.close().then(() => {
+        queueMicrotask(this.remove.bind(this));
+      });
+    } else if (this._writeMode === "fs") {
       if (!!window["webkitRequestFileSystem"]) {
         anchor.href = this._fileEntry.toURL();
         finish(anchor);
@@ -295,7 +355,18 @@ export class CustomFile extends EventEmitter {
   public remove() {
     let self = this;
     return new Promise<void>((resolve, reject) => {
-      if (self._writeMode === "fs") {
+      if (self._writeMode === "stream") {
+        if (self._writer) {
+          self._writer.abort();
+          self._writer = null;
+        }
+
+        self._writeStream.cancel();
+        self._writeStream = null;
+
+        self.emit("finish");
+        self = null;
+      } else if (self._writeMode === "fs") {
         self._fs.root.getFile(
           self._localName,
           { create: false },
@@ -326,7 +397,7 @@ export class CustomFile extends EventEmitter {
     });
   }
 
-  public destroy() {
+  public async destroy() {
     this.emit("done");
 
     // clean up
@@ -341,15 +412,27 @@ export class CustomFile extends EventEmitter {
     this._pieces = null;
     this._pieceLength = null;
     this._memoryStorage = null;
-    this._showSaveFilePicker = null;
     this._requestFileSystem = null;
     this._fs = null;
     this._writeMode = null;
     this._bytesWritten = 0;
     this._bytesRead = 0;
-
-    // this is reset
     this._create = true;
+
+    if (this._reader) await this._reader.cancel("Destroy custom file.");
+    if (this._readStream) await this._readStream.cancel("Destroy custom file.");
+
+    this._readStream = null;
+    this._reader = null;
+
+    if (this._writer) {
+      this._writer.abort();
+      this._writer = null;
+    }
+    if (this._writeStream) this._writeStream.cancel();
+
+    this._writeStream = null;
+    this._writer = null;
 
     // just a way to check if this function was called or not.
     this._destroyed = true;

@@ -13,6 +13,10 @@ import Modal from "./Modal";
 import { Socket } from "socket.io-client";
 import { useSocket } from "../hooks/useSocket";
 import { Metadata, WRTC } from "../helpers/wrtc";
+import queueMicrotask from "queue-microtask";
+import { FileCard } from "./FileCard";
+import { useNotification } from "../hooks/useNotification";
+import { nanoid } from "nanoid";
 
 declare interface Props extends RouteComponentProps<{ id: string }> {
   setTheme: Function;
@@ -24,12 +28,18 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   const [switchModal, setSwitchModal] = useState(false);
   const [peers, setPeers] = useState([]);
   const [fileConfirm, setFileConfirm] = useState(false);
-  const [incomingFile, setIncomingFile] = useState(false);
+  const [incomingFileModal, setIncomingFileModal] = useState(false);
 
   const socketRef = useRef<Socket>(useSocket());
+  const notification = useNotification();
   const switchRoomInputRef = useRef<HTMLInputElement>();
   const downloadTrafficRef = useRef<SVGPathElement>();
   const uploadTrafficRef = useRef<SVGPathElement>();
+  const incomingFilesRef = useRef<Array<{ id: string; metadata: Metadata }>>(
+    []
+  );
+  const currentIncomingFileRef =
+    useRef<{ id: string; metadata: Metadata }>(null);
 
   /**
    * WRTC object has properties:
@@ -86,6 +96,16 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
             setPeers((_peers) => {
               for (let p of peers) {
+                notification({
+                  type: "ADD_NOTIFICATION",
+                  payload: {
+                    id: nanoid(),
+                    title: "New Peer",
+                    lifeSpan: 2000,
+                    message: "A new peer has joined!",
+                    type: "info",
+                  },
+                });
                 let wrtc = new WRTC(socketRef.current.id, p.peerId);
                 wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
                 wrtc.on("error", console.error);
@@ -187,39 +207,59 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   };
 
   const onIncomingFile = (id: string, metadata: Metadata) => {
-    let result = window.confirm(
-      `Accept incoming file: ${metadata.filename} from: ${id}`
-    );
-    if (result) {
-      let wrtc = wrtcPool.current.get(id);
-      wrtc.acceptFile(metadata);
-      let lastRecorded = 0;
-      wrtc.on("progress", (progress) => {
-        console.log(progress);
-        let currentTime = new Date().getTime();
-        let elapsedTime = currentTime - lastRecorded;
-        if (progress >= 1) {
-          downloadTrafficRef.current.classList.remove("active");
-          lastRecorded = null;
-          elapsedTime = null;
-          currentTime = null;
-        } else if (elapsedTime > 500) {
-          downloadTrafficRef.current.classList.toggle("active");
-          lastRecorded = currentTime;
-        }
-      });
+    if (currentIncomingFileRef.current !== null) {
+      incomingFilesRef.current.push({ id, metadata });
+      return;
     } else {
-      wrtcPool.current.get(id).rejectFile(metadata);
+      currentIncomingFileRef.current = { id, metadata };
+      setIncomingFileModal(true);
     }
-    // incomingFiles.set(id, metadata);
-    // toggleIncomingFileModal();
   };
 
-  const toggleIncomingFileModal = () => {
-    setIncomingFile((b) => !b);
+  const onAcceptFile = () => {
+    closeIncomingFileModal(null, false);
+
+    let wrtc = wrtcPool.current.get(currentIncomingFileRef.current.id);
+    wrtc.acceptFile(currentIncomingFileRef.current.metadata);
+    let lastRecorded = 0;
+    wrtc.on("progress", (progress) => {
+      let currentTime = new Date().getTime();
+      let elapsedTime = currentTime - lastRecorded;
+      if (progress >= 1) {
+        downloadTrafficRef.current.classList.remove("active");
+        lastRecorded = null;
+        elapsedTime = null;
+        currentTime = null;
+      } else if (elapsedTime > 500) {
+        downloadTrafficRef.current.classList.toggle("active");
+        lastRecorded = currentTime;
+      }
+    });
   };
 
-  const acceptIncomingFile = () => {};
+  const closeIncomingFileModal = (
+    _: React.MouseEvent<Element, MouseEvent>,
+    closeAndReject: boolean = true
+  ) => {
+    setIncomingFileModal(false);
+
+    // check if there are more incoming files
+    if (currentIncomingFileRef.current !== null) {
+      if (closeAndReject) {
+        wrtcPool.current
+          .get(currentIncomingFileRef.current.id)
+          .rejectFile(currentIncomingFileRef.current.metadata);
+      }
+      if (incomingFilesRef.current.length > 0) {
+        currentIncomingFileRef.current = incomingFilesRef.current.shift();
+        queueMicrotask(() => {
+          setIncomingFileModal(true);
+        });
+      } else {
+        currentIncomingFileRef.current = null;
+      }
+    }
+  };
 
   const toggleSwitchModal = () => {
     setSwitchModal((b) => !b);
@@ -261,21 +301,6 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     });
     toggleFileModal();
   };
-
-  // const readFile = (file: File, id: string) => {
-  //   const reader = file.stream().getReader();
-  //   const read = async () => {
-  //     let { value, done } = await reader.read();
-
-  //     if (done) return console.log("done");
-
-  //     wrtcPool.get(id).sendBinary(value.buffer);
-
-  //     return read();
-  //   };
-
-  //   read();
-  // };
 
   const toggleFileModal = () => {
     if (fileConfirm && confirmationInfo !== null) {
@@ -332,7 +357,6 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                     });
                     let lastRecorded = 0;
                     wrtc.on("progress", (progress) => {
-                      console.log(progress);
                       let currentTime = new Date().getTime();
                       let elapsedTime = currentTime - lastRecorded;
                       if (progress >= 1) {
@@ -532,13 +556,27 @@ const Room: FC<Props> = ({ setTheme, match }) => {
         title="File Confirmation"
       >
         {/* put file card in here */}
+        <FileCard
+          type="upload"
+          content={confirmationInfo ? confirmationInfo.file.name : ""}
+        />
       </Modal>
       <Modal
-        isOpen={incomingFile}
-        onClose={toggleIncomingFileModal}
-        onSubmit={acceptIncomingFile}
-        title="Incoming FIle"
-      ></Modal>
+        isOpen={incomingFileModal}
+        onClose={closeIncomingFileModal}
+        onSubmit={onAcceptFile}
+        title="Incoming File"
+      >
+        {/* put file card in here */}
+        <FileCard
+          type="download"
+          content={
+            currentIncomingFileRef.current !== null
+              ? currentIncomingFileRef.current.metadata.filename
+              : ""
+          }
+        />
+      </Modal>
     </Fragment>
   );
 };
