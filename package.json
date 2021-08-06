@@ -12,6 +12,7 @@
     "@types/react-dom": "^17.0.9",
     "blob-to-buffer": "^1.2.9",
     "buffer": "^4.9.2",
+    "env-cmd": "^10.1.0",
     "is-buffer": "^1.1.6",
     "nanoid": "^3.1.23",
     "qrcode": "^1.4.4",
@@ -29,10 +30,12 @@
     "web-vitals": "^1.1.2"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "start:dev": "env-cmd -e development react-scripts start",
+    "start": "npm run serve",
+    "build": "env-cmd -e production react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "serve": "serve -s build"
   },
   "eslintConfig": {
     "extends": [
@@ -56,6 +59,7 @@
     "@types/blob-to-buffer": "^1.2.0",
     "@types/qrcode": "^1.4.1",
     "@types/react-router-dom": "^5.1.8",
-    "@types/streamsaver": "^2.0.1"
+    "@types/streamsaver": "^2.0.1",
+    "serve": "^12.0.0"
   }
 }
