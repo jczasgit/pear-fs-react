@@ -75,11 +75,9 @@ export const Notification: FC<NotificationProps> = ({
         className={`notification ${type} ${exit ? "exit" : ""}`}
         onClick={dismiss}
         onMouseEnter={() => {
-          console.log("enter");
           timerRef.current.pause();
         }}
         onMouseLeave={() => {
-          console.log("leave");
           timerRef.current.start();
         }}
       >

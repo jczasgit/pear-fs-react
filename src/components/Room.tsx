@@ -173,6 +173,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     wrtc.once("close", () => {
       console.log("data channel closed.");
       wrtc.close();
+      downloadTrafficRef.current.classList.remove("active");
     });
 
     wrtc.once("done", (filename: string) => {
@@ -516,6 +517,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                 wrtc.once("close", () => {
                   console.log("data channel closed.");
                   wrtc.close();
+                  downloadTrafficRef.current.classList.remove("active");
                 });
               });
           });

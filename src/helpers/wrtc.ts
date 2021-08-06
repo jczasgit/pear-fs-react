@@ -44,6 +44,7 @@ export class WRTC extends EventEmitter {
   private _dataChannel: RTCDataChannel;
   private _file: CustomFile; // custom File object
   private _connected: boolean;
+  private _wrtcConfig: RTCConfiguration;
   readonly myid: string; // this is the id for local peer, aka yourself.
   readonly peerid: string; // this is the id for remote peer, aka the target.
 
@@ -57,6 +58,22 @@ export class WRTC extends EventEmitter {
     this._peerConnection = null;
     this._dataChannel = null;
     this._file = null;
+    this._wrtcConfig = {
+      iceServers: [
+        {
+          urls: "stun.l.google.com:19302",
+        },
+        {
+          urls: "stun2.l.google.com:19302",
+        },
+        {
+          urls: "stun3.l.google.com:19302",
+        },
+        {
+          urls: "stun4.l.google.com:19302",
+        },
+      ],
+    };
   }
 
   get peerConnection(): RTCPeerConnection {
