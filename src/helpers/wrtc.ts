@@ -61,18 +61,27 @@ export class WRTC extends EventEmitter {
     this._wrtcConfig = {
       iceServers: [
         {
-          urls: "stun.l.google.com:19302",
+          urls: ["stun:stun.l.google.com:19302"],
+          username: "",
+          credential: "",
         },
         {
-          urls: "stun2.l.google.com:19302",
+          urls: ["stun:stun2.l.google.com:19302"],
+          username: "",
+          credential: "",
         },
         {
-          urls: "stun3.l.google.com:19302",
+          urls: ["stun:stun3.l.google.com:19302"],
+          username: "",
+          credential: "",
         },
         {
-          urls: "stun4.l.google.com:19302",
+          urls: ["stun:stun4.l.google.com:19302"],
+          username: "",
+          credential: "",
         },
       ],
+      iceTransportPolicy: "all",
     };
   }
 
