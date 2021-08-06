@@ -9,7 +9,9 @@ export default function Icon({ filename, className = "", onClick = null }) {
 
     const importFruit = async () => {
       try {
-        setIconSource(`http://localhost:3001/avatars/${filename}`);
+        setIconSource(
+          `${process.env.REACT_APP_API_ENDPOINT}/avatars/${filename}`
+        );
       } catch (error) {
         throw error;
       } finally {
