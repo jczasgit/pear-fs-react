@@ -66,19 +66,9 @@ export class WRTC extends EventEmitter {
           credential: "",
         },
         {
-          urls: ["stun:stun2.l.google.com:19302"],
-          username: "",
-          credential: "",
-        },
-        {
-          urls: ["stun:stun3.l.google.com:19302"],
-          username: "",
-          credential: "",
-        },
-        {
-          urls: ["stun:stun4.l.google.com:19302"],
-          username: "",
-          credential: "",
+          urls: ["turn:numb.viagenie.ca"],
+          credential: "muazkh",
+          username: "webrtc@live.com",
         },
       ],
       iceTransportPolicy: "all",
@@ -266,10 +256,6 @@ export class WRTC extends EventEmitter {
 
     this._wrapPeerConnection(this._peerConnection);
 
-    // override the wrapper 👆
-    // we do not need to signal the peer if we get an offer.
-    this._peerConnection.onicecandidate = () => {};
-
     this._dataChannel = this._peerConnection.createDataChannel(
       "binary-channel",
       {
@@ -291,11 +277,6 @@ export class WRTC extends EventEmitter {
         await this._peerConnection.createAnswer()
       );
       console.log("Answer set as local description.");
-      this.emit("answer", {
-        payload: JSON.stringify(this._peerConnection.localDescription.toJSON()),
-        from: this.myid,
-        to: this.peerid,
-      });
     } catch (error) {
       this.emit("error", error);
     }
@@ -306,6 +287,7 @@ export class WRTC extends EventEmitter {
     pc.onconnectionstatechange = this._onConnectionStateChange.bind(this);
     pc.onicecandidateerror = this._onIceCandidateError.bind(this);
     pc.oniceconnectionstatechange = this._onIceConnectionStateChange.bind(this);
+    pc.onicegatheringstatechange = this._onIceGatheringStateChange.bind(this);
   }
 
   private _wrapDataChannel(dc: RTCDataChannel) {
@@ -383,19 +365,28 @@ export class WRTC extends EventEmitter {
   private _onIceCandidate(e: RTCPeerConnectionIceEvent) {
     // We only want to signal when all candidates have been added.
     // As long as e.candidate is defined, more candidates are to be added.
-    if (e.candidate) return;
-
-    this.emit("signal", {
-      payload: JSON.stringify(this._peerConnection.localDescription.toJSON()),
-      from: this.myid,
-      to: this.peerid,
-    });
+    if (e.candidate) {
+      console.log("New Candidate");
+      console.log(e.candidate.candidate);
+      return;
+    }
   }
 
   private _onConnectionStateChange() {
     // the following states are: new, connecting, connected, disconnected, failed, closed.
     this._connected = this._peerConnection.connectionState === "connected";
     this.emit("connectionstatechange", this._peerConnection.connectionState);
+  }
+
+  private _onIceGatheringStateChange() {
+    console.log("ICE gathering state:", this._peerConnection.iceGatheringState);
+    if (this._peerConnection.iceGatheringState === "complete") {
+      this.emit("signal", {
+        payload: JSON.stringify(this._peerConnection.localDescription.toJSON()),
+        from: this.myid,
+        to: this.peerid,
+      });
+    }
   }
 
   private _onIceCandidateError(e: RTCPeerConnectionIceErrorEvent) {

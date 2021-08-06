@@ -165,15 +165,16 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
     let wrtc = wrtcPool.current.get(from);
 
-    wrtc.once("answer", (answer) => {
+    wrtc.once("signal", (answer) => {
       socketRef.current.emit("answer", answer);
-      window["dc"] = wrtcPool.current.get(from);
+      // window["dc"] = wrtcPool.current.get(from);
     });
 
     wrtc.once("close", () => {
       console.log("data channel closed.");
       wrtc.close();
       downloadTrafficRef.current.classList.remove("active");
+      uploadTrafficRef.current.classList.remove("active");
     });
 
     wrtc.once("done", (filename: string) => {
@@ -201,8 +202,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     avatarId: string;
     nickname: string;
   }) => {
-    // do someting
-    console.log("new peer", peer);
+    // console.log("new peer", peer);
     let wrtc = new WRTC(socketRef.current.id, peer.peerId);
     wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
     wrtc.on("error", (err) => {
@@ -270,7 +270,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       return;
     } else {
       currentIncomingFileRef.current = { id, metadata };
-      console.log(currentIncomingFileRef.current);
+      // console.log(currentIncomingFileRef.current);
       setIncomingFileModal(true);
     }
   };
@@ -518,6 +518,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                   console.log("data channel closed.");
                   wrtc.close();
                   downloadTrafficRef.current.classList.remove("active");
+                  uploadTrafficRef.current.classList.remove("active");
                 });
               });
           });

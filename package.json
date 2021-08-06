@@ -32,6 +32,7 @@
   },
   "scripts": {
     "start:dev": "env-cmd -e development react-scripts start",
+    "start:pi": "env-cmd -e pi react-scripts start",
     "start": "npm run serve",
     "build": "env-cmd -e production react-scripts build",
     "test": "react-scripts test",
