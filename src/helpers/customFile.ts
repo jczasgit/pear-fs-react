@@ -294,15 +294,21 @@ export class CustomFile extends EventEmitter {
         if (done) {
           try {
             self._reader.cancel().then(() => {
-              self._readStream.cancel().then(() => {
+              if (!self._readStream.locked) {
+                self._readStream.cancel().then(() => {
+                  self._reader = null;
+                  self._readStream = null;
+                });
+              } else {
                 self._reader = null;
                 self._readStream = null;
-              });
+              }
             });
           } catch (error) {
             self.emit("error", error);
           }
           self.emit("data", null);
+          return;
         }
 
         self._bytesRead += value.bytesLenght;
@@ -361,7 +367,8 @@ export class CustomFile extends EventEmitter {
           self._writer = null;
         }
 
-        self._writeStream.cancel();
+        // note: this seems not to be a function.
+        // self._writeStream.cancel();
         self._writeStream = null;
 
         self.emit("finish");
