@@ -233,7 +233,7 @@ export class WRTC extends EventEmitter {
   }
 
   private async _connectAsInitiator() {
-    this._peerConnection = new RTCPeerConnection();
+    this._peerConnection = new RTCPeerConnection(this._wrtcConfig);
     this._wrapPeerConnection(this._peerConnection);
 
     this._dataChannel = this._peerConnection.createDataChannel(
@@ -262,7 +262,7 @@ export class WRTC extends EventEmitter {
 
   private async _connect(desc: RTCSessionDescription) {
     // Connect when received an offer from a peer.
-    this._peerConnection = new RTCPeerConnection();
+    this._peerConnection = new RTCPeerConnection(this._wrtcConfig);
 
     this._wrapPeerConnection(this._peerConnection);
 
