@@ -11,7 +11,8 @@ export const Load: React.FC<Props> = ({ history }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/room")
+    console.log(process.env.REACT_APP_API_ENDPOINT);
+    fetch(`${process.env.REACT_APP_API_ENDPOINT}/api/room`)
       .then((res) => res.json())
       .then((json) => {
         // when not joined successfully, joined is empty string

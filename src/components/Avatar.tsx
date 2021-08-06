@@ -51,7 +51,9 @@ export const Avatar: FC<AvatarProps> = ({
 
     const getAvatar = async () => {
       try {
-        let res = await fetch("http://localhost:3001/api/avatar/" + avatarId);
+        let res = await fetch(
+          `${process.env.REACT_APP_API_ENDPOINT}/api/avatar/` + avatarId
+        );
         /**
          * {
          *  "filename": "id.svg",

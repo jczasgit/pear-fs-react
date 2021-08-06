@@ -36,7 +36,7 @@ function App() {
   }, []);
 
   return (
-    <SocketProvider url="http://localhost:3001">
+    <SocketProvider url={process.env.REACT_APP_API_ENDPOINT}>
       <NotificationProvider>
         <BrowserRouter>
           <Switch>
