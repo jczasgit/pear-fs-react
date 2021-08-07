@@ -49,6 +49,7 @@ export class WRTC extends EventEmitter {
   private _file: CustomFile; // custom File object
   private _connected: boolean;
   private _wrtcConfig: RTCConfiguration;
+  private _initiator: boolean;
   readonly myid: string; // this is the id for local peer, aka yourself.
   readonly peerid: string; // this is the id for remote peer, aka the target.
 
@@ -63,20 +64,21 @@ export class WRTC extends EventEmitter {
     this._dataChannel = null;
     this._file = null;
     this._wrtcConfig = {
-      // iceServers: [
-      //   {
-      //     urls: ["stun:stun.l.google.com:19302"],
-      //     username: "",
-      //     credential: "",
-      //   },
-      //   {
-      //     urls: ["turn:numb.viagenie.ca"],
-      //     credential: "muazkh",
-      //     username: "webrtc@live.com",
-      //   },
-      // ],
-      // iceTransportPolicy: "all",
+      iceServers: [
+        {
+          urls: ["stun:stun.l.google.com:19302"],
+          username: "",
+          credential: "",
+        },
+        {
+          urls: ["turn:numb.viagenie.ca"],
+          credential: "muazkh",
+          username: "webrtc@live.com",
+        },
+      ],
+      iceTransportPolicy: "all",
     };
+    this._initiator = null;
   }
 
   get peerConnection(): RTCPeerConnection {
@@ -201,6 +203,22 @@ export class WRTC extends EventEmitter {
     this._dataChannel.send(JSON.stringify(json));
   }
 
+  /**
+   *
+   * @since v2.0.0
+   */
+  public socketShare() {
+    this._file.removeAllListeners("data");
+    this._file.on("data", (blob) => {
+      this.emit("data-ws", blob);
+      queueMicrotask(this._file.read.bind(this._file, false));
+    });
+
+    this._file.read(false);
+  }
+
+  public async socketReceive(data: ArrayBuffer) {}
+
   public connect(description: RTCSessionDescription): Promise<boolean>;
   public connect(initiator: boolean | RTCSessionDescription, opts?: { description: RTCSessionDescription }): Promise<boolean>; //prettier-ignore
   // prettier-ignore
@@ -228,6 +246,8 @@ export class WRTC extends EventEmitter {
     ) {
       return true;
     }
+
+    this._initiator = true;
 
     this._peerConnection = new RTCPeerConnection(this._wrtcConfig);
     this._wrapPeerConnection(this._peerConnection);
@@ -271,6 +291,8 @@ export class WRTC extends EventEmitter {
     ) {
       return true;
     }
+
+    this._initiator = false;
 
     // Connect when received an offer from a peer.
     this._peerConnection = new RTCPeerConnection(this._wrtcConfig);
@@ -457,6 +479,11 @@ export class WRTC extends EventEmitter {
   private _onIceConnectionStateChange() {
     if (this._peerConnection.iceConnectionState === "failed") {
       // try using websocket instead
+      this.emit("error", new RTCConnectionError("ICE connection failed", null));
+      if (this._initiator) {
+        // notify peer to change to websocket file transfer protocol
+        // this.emit("use-ws", this.peerid);
+      }
     }
 
     // the following states are: new, checking, connected, completed, failed, closed, disconnected.
@@ -482,6 +509,8 @@ export class WRTC extends EventEmitter {
   on(evt: "progress", callback: (progress: number) => void): this;
   on(evt: "done", callback: (filename: string) => void): this;
   on(evt: "reject", callback: (filename: string) => void): this;
+  on(evt: "use-ws", callback: (peerId: string) => void): this;
+  on(evt: "data-ws", callback: (data: ArrayBuffer) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this;
   on(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.on(evt, callback);
@@ -502,6 +531,7 @@ export class WRTC extends EventEmitter {
   once(evt: "progress", callback: (progress: number) => void): this;
   once(evt: "done", callback: (filename: string) => void): this;
   once(evt: "reject", callback: (filename: string) => void): this;
+  once(evt: "use-ws", callback: (peerId: string) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this;
   once(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.once(evt, callback);
@@ -520,6 +550,7 @@ export class WRTC extends EventEmitter {
   off(evt: "progress", callback: (progress: number) => void): this;
   off(evt: "done", callback: (filename: string) => void): this;
   off(evt: "reject", callback: (filename: string) => void): this;
+  off(evt: "use-ws", callback: (peerId: string) => void): this;
   off(evt: string | symbol, callback: (...args: any[]) => void): this;
   off(evt: string | symbol, callback: (...args: any[]) => void): this {
     return super.off(evt, callback);
@@ -538,6 +569,7 @@ export class WRTC extends EventEmitter {
   emit(evt: "progress", progress: number): boolean;
   emit(evt: "done", filename: string): boolean;
   emit(evt: "reject", filename: string): boolean;
+  emit(evt: "use-ws", callback: (peerId: string) => void): boolean;
   emit(evt: string | symbol, ...args: any[]): boolean;
   emit(evt: string | symbol, ...args: any[]): boolean {
     return super.emit(evt, ...args);

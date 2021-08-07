@@ -117,6 +117,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
               .on("new-nickname", onNewNickname);
             socketRef.current.off("signal", onSignal).on("signal", onSignal);
             socketRef.current.off("ping-peer", onPing).on("ping-peer", onPing);
+            socketRef.current.off("use-ws", onUseWS).on("use-ws", onUseWS);
 
             setPeers((_peers) => {
               for (let p of peers) {
@@ -143,6 +144,11 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, wrtcPool]);
+
+  /**
+   * @since v2.0.0
+   */
+  const onUseWS = (peerId: string) => {};
 
   const onSignal = (signal: string, from: string) => {
     // note: conncetion offer from a peer
@@ -195,8 +201,8 @@ const Room: FC<Props> = ({ setTheme, match }) => {
         payload: {
           id: nanoid(),
           lifeSpan: 5000,
-          message: "An error occurred during peer to peer connection.",
-          title: "WebRTC Error",
+          message: err.message,
+          title: err.name,
           type: "error",
         },
       });
@@ -482,6 +488,23 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                   wrtc.close();
                   downloadTrafficRef.current.classList.remove("active");
                   uploadTrafficRef.current.classList.remove("active");
+                });
+
+                wrtc.once("use-ws", (peerId) => {
+                  socketRef.current.emit("use-ws", peerId);
+                  socketRef.current.once("using-ws", (peerId) => {
+                    wrtc.on("data-ws", (data) => {
+                      if (data === null) {
+                        socketRef.current.emit("done-ws", peerId);
+                        wrtc.removeAllListeners("data-ws");
+                        return;
+                      }
+
+                      socketRef.current.emit("data-ws", data);
+                    });
+
+                    wrtc.socketShare();
+                  });
                 });
               });
           });

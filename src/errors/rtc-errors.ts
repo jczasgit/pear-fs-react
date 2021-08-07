@@ -29,3 +29,10 @@ export class RTCDataChannelError extends RTCError {
     this.name = "RTCDataChannelError";
   }
 }
+
+export class RTCICEGahteringError extends RTCError {
+  constructor(message: string, err: Error) {
+    super(message, err);
+    this.name = "RTCICEGatheringError";
+  }
+}

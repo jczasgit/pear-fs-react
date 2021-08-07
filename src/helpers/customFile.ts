@@ -12,6 +12,7 @@ import queueMicrotask from "queue-microtask";
 import toBuffer from "blob-to-buffer";
 import streamSaver from "streamsaver";
 import { promisify } from "util";
+import { CustomFileError } from "../errors/custom-file-errors";
 
 export type NativeFile = File;
 export type FileMode = 0x1 | 0x2;
@@ -139,7 +140,10 @@ export class CustomFile extends EventEmitter {
                 self = null;
               },
               (err: Error) => {
-                self.emit("error", err);
+                self.emit(
+                  "error",
+                  new CustomFileError("Error requesting file system", err)
+                );
                 self = null;
               }
             );
@@ -165,9 +169,10 @@ export class CustomFile extends EventEmitter {
           } else {
             this.emit(
               "error",
-              new Error(
+              new CustomFileError(
                 "Reading mode. Expected File instance but received " +
-                  typeof this._file
+                  typeof this._file,
+                null
               )
             );
           }
@@ -177,7 +182,13 @@ export class CustomFile extends EventEmitter {
           throw new Error("Unsupported file mode.");
       }
     } catch (error) {
-      this.emit("error", error);
+      this.emit(
+        "error",
+        new CustomFileError(
+          "Error initializing custom file access mode.",
+          error
+        )
+      );
     }
   }
 
@@ -191,14 +202,17 @@ export class CustomFile extends EventEmitter {
       case "fs":
         return this._writeFs(chunk);
       default:
-        this.emit("error", new Error("No write mode set."));
+        this.emit("error", new CustomFileError("No write mode set.", null));
         return Promise.resolve();
     }
   }
 
   private async _writeStm(chunk: any) {
     if (!this._writeStream) {
-      this.emit("error", new Error("Cannot write before init is called."));
+      this.emit(
+        "error",
+        new CustomFileError("Cannot write before init is called.", null)
+      );
       return;
     }
 
@@ -283,7 +297,10 @@ export class CustomFile extends EventEmitter {
       }
     } else {
       if (!this._readStream) {
-        this.emit("error", new Error("Cannot read before init() is called."));
+        this.emit(
+          "error",
+          new CustomFileError("Error trying to read before initializing.", null)
+        );
         return;
       }
 
@@ -305,7 +322,13 @@ export class CustomFile extends EventEmitter {
               }
             });
           } catch (error) {
-            self.emit("error", error);
+            self.emit(
+              "error",
+              new CustomFileError(
+                "Error while trying to read using readable stream.",
+                error
+              )
+            );
           }
           self.emit("data", null);
           return;
@@ -387,13 +410,22 @@ export class CustomFile extends EventEmitter {
                 resolve();
               },
               (err) => {
-                self.emit("error", err);
+                self.emit(
+                  "error",
+                  new CustomFileError(
+                    "Error while removing temporary file.",
+                    err
+                  )
+                );
                 self = null;
               }
             );
           },
           (err) => {
-            self.emit("error", err);
+            self.emit(
+              "error",
+              new CustomFileError("Error getting temporary file.", err)
+            );
             self = null;
           }
         );
