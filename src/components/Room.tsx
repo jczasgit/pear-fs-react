@@ -120,24 +120,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
             setPeers((_peers) => {
               for (let p of peers) {
-                let wrtc = new WRTC(socketRef.current.id, p.peerId);
-                wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
-                wrtc.on("error", (err) => {
-                  notification({
-                    type: "ADD_NOTIFICATION",
-                    payload: {
-                      id: nanoid(),
-                      lifeSpan: 5000,
-                      message:
-                        "An error occurred during peer to peer connection.",
-                      title: "WebRTC Error",
-                      type: "error",
-                    },
-                  });
-                  console.error(err);
-                  // todo: try sending files through websocket
-                });
-                wrtcPool.current.set(p.peerId, wrtc);
+                wrtcPool.current.set(p.peerId, createWRTC(p.peerId));
               }
 
               return peers;
@@ -203,13 +186,8 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     socketRef.current.emit("pong-peer", id);
   };
 
-  const onNewPeer = (peer: {
-    peerId: string;
-    avatarId: string;
-    nickname: string;
-  }) => {
-    // console.log("new peer", peer);
-    let wrtc = new WRTC(socketRef.current.id, peer.peerId);
+  const createWRTC = (id: string) => {
+    let wrtc = new WRTC(socketRef.current.id, id);
     wrtc.on("incoming", onIncomingFile.bind(wrtc, wrtc.peerid));
     wrtc.on("error", (err) => {
       notification({
@@ -224,7 +202,26 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       });
       console.error(err);
     });
-    wrtcPool.current.set(peer.peerId, wrtc);
+    wrtc.on("connectionstatechange", (state) => {
+      console.log("WRTC connection state changed to " + state);
+    });
+    wrtc.on("icegathetingerror", (err) => {
+      console.log("WRTC ICE gathering error");
+      console.error(err);
+    });
+    wrtc.on("iceconnectionstatechange", (state) => {
+      console.log("WRTC ICE connection state changed to " + state);
+    });
+    return wrtc;
+  };
+
+  const onNewPeer = (peer: {
+    peerId: string;
+    avatarId: string;
+    nickname: string;
+  }) => {
+    // console.log("new peer", peer);
+    wrtcPool.current.set(peer.peerId, createWRTC(peer.peerId));
     setPeers((peers) => [...peers, peer]);
   };
 
@@ -431,8 +428,6 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       // we are maintaining the connection as long as one user does not close the browser
       // or loses internet connection.
       // hence, we can use the existing data channel to share files.
-      console.log(wrtc.connected);
-
       if (wrtc.connected) {
         console.log("Using existing WebRTC connection.");
         startShare(wrtc);
@@ -476,7 +471,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
               })
               .finally(() => {
                 // start sending file data as soon as data channel is open.
-                wrtc.on("open", () => {
+                wrtc.once("open", () => {
                   console.log("data channel opened.");
 
                   startShare(wrtc);

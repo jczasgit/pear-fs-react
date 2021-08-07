@@ -1,5 +1,10 @@
 // todo: refactor code
 
+import {
+  RTCConnectionError,
+  RTCDataChannelError,
+  RTCSessionDescriptionError,
+} from "../errors/rtc-errors";
 import { EventEmitter } from "events";
 import { CustomFile } from "./customFile";
 
@@ -58,19 +63,19 @@ export class WRTC extends EventEmitter {
     this._dataChannel = null;
     this._file = null;
     this._wrtcConfig = {
-      iceServers: [
-        {
-          urls: ["stun:stun.l.google.com:19302"],
-          username: "",
-          credential: "",
-        },
-        {
-          urls: ["turn:numb.viagenie.ca"],
-          credential: "muazkh",
-          username: "webrtc@live.com",
-        },
-      ],
-      iceTransportPolicy: "all",
+      // iceServers: [
+      //   {
+      //     urls: ["stun:stun.l.google.com:19302"],
+      //     username: "",
+      //     credential: "",
+      //   },
+      //   {
+      //     urls: ["turn:numb.viagenie.ca"],
+      //     credential: "muazkh",
+      //     username: "webrtc@live.com",
+      //   },
+      // ],
+      // iceTransportPolicy: "all",
     };
   }
 
@@ -90,7 +95,7 @@ export class WRTC extends EventEmitter {
   }
 
   public async setFile(file: File) {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       console.log("Create new CustomFile");
       this._file = new CustomFile(0x2, {
         file,
@@ -196,41 +201,34 @@ export class WRTC extends EventEmitter {
     this._dataChannel.send(JSON.stringify(json));
   }
 
-  public connect(description: RTCSessionDescription): void;
-  public connect(initiator: boolean | RTCSessionDescription, opts?: { description: RTCSessionDescription }): void; //prettier-ignore
+  public connect(description: RTCSessionDescription): Promise<boolean>;
+  public connect(initiator: boolean | RTCSessionDescription, opts?: { description: RTCSessionDescription }): Promise<boolean>; //prettier-ignore
   // prettier-ignore
-  public connect(initOrDesc: boolean | RTCSessionDescription = false, opts?: { description: RTCSessionDescription }): void { 
+  public connect(initOrDesc: boolean | RTCSessionDescription = false, opts?: { description: RTCSessionDescription }): Promise<boolean> { 
     if (typeof initOrDesc === "boolean" && initOrDesc === true) { 
-      this._connectAsInitiator();
-      return;
+      return this._connectAsInitiator();
     }
 
     if (typeof initOrDesc === "boolean" && initOrDesc === false && typeof opts !== "undefined") {
-      this._connect(opts.description);
-      return;
+      return this._connect(opts.description);
     }
 
     if (initOrDesc instanceof RTCSessionDescription) {
-      this._connect(initOrDesc);
-      return;
+      
+      return this._connect(initOrDesc);
     }
 
     this.emit("error", new Error("Invalid argument passed to connect(). Expected boolean or RTCSessionDescription but got " + typeof initOrDesc));
   }
 
-  public async setAnswer(description: RTCSessionDescription) {
-    if (!this._peerConnection) return;
-
-    try {
-      await this._peerConnection.setRemoteDescription(description);
-    } catch (error) {
-      this.emit("error", error);
+  private async _connectAsInitiator(): Promise<boolean> {
+    if (
+      this._peerConnection instanceof RTCPeerConnection &&
+      this._dataChannel instanceof RTCDataChannel
+    ) {
+      return true;
     }
 
-    return;
-  }
-
-  private async _connectAsInitiator() {
     this._peerConnection = new RTCPeerConnection(this._wrtcConfig);
     this._wrapPeerConnection(this._peerConnection);
 
@@ -254,11 +252,26 @@ export class WRTC extends EventEmitter {
       );
       console.log("Offer set as local description.");
     } catch (error) {
-      this.emit("error", error);
+      this.emit(
+        "error",
+        new RTCSessionDescriptionError(
+          "Error while setting offer as local description.",
+          error
+        )
+      );
     }
+
+    return false;
   }
 
-  private async _connect(desc: RTCSessionDescription) {
+  private async _connect(desc: RTCSessionDescription): Promise<boolean> {
+    if (
+      this._peerConnection instanceof RTCPeerConnection &&
+      this._dataChannel instanceof RTCDataChannel
+    ) {
+      return true;
+    }
+
     // Connect when received an offer from a peer.
     this._peerConnection = new RTCPeerConnection(this._wrtcConfig);
 
@@ -278,16 +291,54 @@ export class WRTC extends EventEmitter {
 
     // Set offer as remote description.
     // Create an answer and signal back to offerer.
+
     try {
       await this._peerConnection.setRemoteDescription(desc);
       console.log("Offer set as remote description.");
+    } catch (error) {
+      this.emit(
+        "error",
+        new RTCSessionDescriptionError(
+          "Error while setting offer as remote description.",
+          error
+        )
+      );
+    }
+
+    try {
       await this._peerConnection.setLocalDescription(
         await this._peerConnection.createAnswer()
       );
       console.log("Answer set as local description.");
     } catch (error) {
-      this.emit("error", error);
+      this.emit(
+        "error",
+        new RTCSessionDescriptionError(
+          "Error while setting answer as local description.",
+          error
+        )
+      );
     }
+
+    return false;
+  }
+
+  public async setAnswer(description: RTCSessionDescription) {
+    if (!this._peerConnection) return;
+
+    try {
+      await this._peerConnection.setRemoteDescription(description);
+    } catch (error) {
+      this.emit(
+        "error",
+        new RTCSessionDescriptionError(
+          "Error while setting answer as remote description",
+          error
+        )
+      );
+    }
+
+    return;
   }
 
   private _wrapPeerConnection(pc: RTCPeerConnection) {
@@ -311,7 +362,7 @@ export class WRTC extends EventEmitter {
   }
 
   private _onError(e: ErrorEvent) {
-    this.emit("error", e);
+    this.emit("error", new RTCDataChannelError(e.message, e.error));
   }
 
   private _onOpen() {
@@ -404,6 +455,10 @@ export class WRTC extends EventEmitter {
   }
 
   private _onIceConnectionStateChange() {
+    if (this._peerConnection.iceConnectionState === "failed") {
+      // try using websocket instead
+    }
+
     // the following states are: new, checking, connected, completed, failed, closed, disconnected.
     this.emit(
       "iceconnectionstatechange",
@@ -419,7 +474,10 @@ export class WRTC extends EventEmitter {
   on(evt: "connectionstatechange", callback: (state: ConnectionState) => void): this;
   //prettier-ignore
   on(evt: "iceconnectionstatechange", callback: (state: IceConnectionState) => void): this;
-  on(evt: "icegathetingerror", callback: (err: any) => void): this;
+  on(
+    evt: "icegathetingerror",
+    callback: (err: RTCPeerConnectionIceErrorEvent) => void
+  ): this;
   on(evt: "incoming", callback: (metadata: Metadata) => void): this;
   on(evt: "progress", callback: (progress: number) => void): this;
   on(evt: "done", callback: (filename: string) => void): this;
@@ -436,7 +494,10 @@ export class WRTC extends EventEmitter {
   once(evt: "connectionstatechange", callback: (state: ConnectionState) => void): this;
   //prettier-ignore
   once(evt: "iceconnectionstatechange", callback: (state: IceConnectionState) => void): this;
-  once(evt: "icegathetingerror", callback: (err: any) => void): this;
+  once(
+    evt: "icegathetingerror",
+    callback: (err: RTCPeerConnectionIceErrorEvent) => void
+  ): this;
   once(evt: "incoming", callback: (metadata: Metadata) => void): this;
   once(evt: "progress", callback: (progress: number) => void): this;
   once(evt: "done", callback: (filename: string) => void): this;
