@@ -1,4 +1,7 @@
 // todo: refactor code
+// todo: maintain WebRTC connection after file transfer.
+// note: It could be better if we establish a WebRTC connection right
+// note: when a new user joins with a debounce time of 5 seconds in the room.
 
 import { EventEmitter } from "events";
 import { CustomFile } from "./customFile";
@@ -105,6 +108,8 @@ export class WRTC extends EventEmitter {
         console.log("File is ready.");
         resolve();
       });
+
+      // note: event when reading a file
       this._file.on("data", (data) => {
         if (data === null) {
           this.emit("done", this._file.name);
@@ -124,6 +129,7 @@ export class WRTC extends EventEmitter {
       this._file.once("destroy", () => {
         console.log("File destroyed.");
         this._file = null;
+        // todo: maintain connection after the file has been saved and destroyed.
         this._dataChannel.close();
       });
       this._file.on("progress", (progress) => {
@@ -155,6 +161,7 @@ export class WRTC extends EventEmitter {
     this._file.once("destroy", () => {
       console.log("File destroyed.");
       this._file = null;
+      // todo: maintain connection after the file has been saved and destroyed.
       this._dataChannel.close();
     });
     this._file.on("error", (error) => {
@@ -340,16 +347,21 @@ export class WRTC extends EventEmitter {
 
     switch (json.type) {
       case "file":
+        // in this case, there is an offer for a file to download.
         this._incomingFile(json.payload);
         break;
       case "download":
+        // a peer is asking for more chunks of data.
         this._file.read(false);
         break;
       case "reject":
+        // the peer rejected our file share offer.
         this.emit("reject", this._file.name);
         this._file.destroy();
         break;
       case "done":
+        // the peer who started the file share indicates that all data
+        // has been transfered.
         this.emit("done", this._file.name);
         this._file.save();
         break;

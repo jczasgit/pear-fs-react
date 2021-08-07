@@ -172,6 +172,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
     wrtc.once("close", () => {
       console.log("data channel closed.");
+      // todo: maintain connection after the file has been saved and destroyed.
       wrtc.close();
       downloadTrafficRef.current.classList.remove("active");
       uploadTrafficRef.current.classList.remove("active");
@@ -516,6 +517,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
                 wrtc.once("close", () => {
                   console.log("data channel closed.");
+                  // todo: maintain connection after the file has been saved and destroyed.
                   wrtc.close();
                   downloadTrafficRef.current.classList.remove("active");
                   uploadTrafficRef.current.classList.remove("active");
