@@ -1,6 +1,5 @@
 import "./TopNav.css";
-import { FC, Fragment, MouseEventHandler, useState } from "react";
-import { useEffect } from "react";
+import { FC, Fragment, MouseEventHandler } from "react";
 
 declare interface TopNavProps {}
 declare interface TopNavItemContainerProps {

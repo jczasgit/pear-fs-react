@@ -4,7 +4,6 @@ export class Timer extends EventEmitter {
   private _timeoutId: number;
   private _delay: number;
   private _start: number;
-  private _remaining: number;
   private _target: string;
 
   constructor(target: string, delay: number = 5000) {

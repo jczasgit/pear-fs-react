@@ -1,11 +1,7 @@
 // todo: refactor code
-// todo: maintain WebRTC connection after file transfer.
-// note: It could be better if we establish a WebRTC connection right
-// note: when a new user joins with a debounce time of 5 seconds in the room.
 
 import { EventEmitter } from "events";
 import { CustomFile } from "./customFile";
-import queueMicrotask from "queue-microtask";
 
 export interface SignalData {
   payload: string; // stringify version of RTCSessionDescription
@@ -124,13 +120,13 @@ export class WRTC extends EventEmitter {
       });
 
       this._file.once("done", () => {
-        console.log("File download done.");
+        console.log("File transfer done.");
       });
       this._file.once("destroy", () => {
         console.log("File destroyed.");
         this._file = null;
-        // todo: maintain connection after the file has been saved and destroyed.
-        this._dataChannel.close();
+        // note: maintain connection after the file has been saved and destroyed.
+        // this._dataChannel.close();
       });
       this._file.on("progress", (progress) => {
         this.emit("progress", progress);
@@ -161,8 +157,8 @@ export class WRTC extends EventEmitter {
     this._file.once("destroy", () => {
       console.log("File destroyed.");
       this._file = null;
-      // todo: maintain connection after the file has been saved and destroyed.
-      this._dataChannel.close();
+      // * maintain connection after the file has been saved and destroyed.
+      // this._dataChannel.close();
     });
     this._file.on("error", (error) => {
       this.emit("error", error);
@@ -179,7 +175,12 @@ export class WRTC extends EventEmitter {
   }
 
   public close() {
-    this._peerConnection.close();
+    if (this._dataChannel instanceof RTCDataChannel) {
+      this._dataChannel.close();
+    }
+    if (this._peerConnection instanceof RTCPeerConnection) {
+      this._peerConnection.close();
+    }
     this._connected = false;
     this._peerConnection = null;
     this._dataChannel = null;
@@ -332,12 +333,9 @@ export class WRTC extends EventEmitter {
   private _write(chunk: Blob) {
     let self = this;
     this._file.write(chunk).then(() => {
-      queueMicrotask(() => {
-        self.sendJson({
-          type: "download",
-          payload: {},
-        });
-        self = null;
+      self.sendJson({
+        type: "download",
+        payload: {},
       });
     });
   }

@@ -135,6 +135,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
                     },
                   });
                   console.error(err);
+                  // todo: try sending files through websocket
                 });
                 wrtcPool.current.set(p.peerId, wrtc);
               }
@@ -177,7 +178,6 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
     wrtc.once("close", () => {
       console.log("data channel closed.");
-      // todo: maintain connection after the file has been saved and destroyed.
       wrtc.close();
       downloadTrafficRef.current.classList.remove("active");
       uploadTrafficRef.current.classList.remove("active");
@@ -304,11 +304,13 @@ const Room: FC<Props> = ({ setTheme, match }) => {
       let currentTime = new Date().getTime();
       let elapsedTime = currentTime - lastRecorded;
       if (progress >= 1) {
+        console.log("Download progress:", progress);
         downloadTrafficRef.current.classList.remove("active");
         lastRecorded = null;
         elapsedTime = null;
         currentTime = null;
       } else if (elapsedTime > 500) {
+        console.log("Download progress:", progress);
         downloadTrafficRef.current.classList.toggle("active");
         lastRecorded = currentTime;
       }
@@ -408,9 +410,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
   };
 
   const onFileConfirmed = () => {
-    // note: sending file to
-
-    // notify the use that we are waiting for peer to accept file
+    // notify the user that we are waiting for peer to accept file
     notification({
       type: "ADD_NOTIFICATION",
       payload: {
@@ -428,10 +428,22 @@ const Room: FC<Props> = ({ setTheme, match }) => {
     if (confirmationInfo !== null) {
       let wrtc = wrtcPool.current.get(confirmationInfo.id);
 
+      // we are maintaining the connection as long as one user does not close the browser
+      // or loses internet connection.
+      // hence, we can use the existing data channel to share files.
+      console.log(wrtc.connected);
+
+      if (wrtc.connected) {
+        console.log("Using existing WebRTC connection.");
+        startShare(wrtc);
+        return;
+      }
+
+      // * logic for first time starting a file share as an offerer.
       wrtc.once("signal", (signal) => {
         // console.log(signal);
 
-        // console.log("Ping peer " + confirmationInfo.id);
+        console.log("Ping peer " + confirmationInfo.id);
         socketRef.current.emit("ping-peer", confirmationInfo.id);
 
         let timeout = setTimeout(() => {
@@ -447,82 +459,31 @@ const Room: FC<Props> = ({ setTheme, match }) => {
             wrtc
               .setAnswer(new RTCSessionDescription(JSON.parse(answer)))
               .then(() => console.log("Answer set as remote description."))
-              .catch(console.error)
+              .catch((err) => {
+                notification({
+                  type: "ADD_NOTIFICATION",
+                  payload: {
+                    id: nanoid(),
+                    lifeSpan: 5000,
+                    message: "Error Setting RTCSessionDescription",
+                    title: "WebRTC Error",
+                    type: "error",
+                  },
+                });
+
+                // we still log it to the console for debugging purposes.
+                console.error(err);
+              })
               .finally(() => {
+                // start sending file data as soon as data channel is open.
                 wrtc.on("open", () => {
                   console.log("data channel opened.");
 
-                  wrtc.setFile(confirmationInfo.file).then(() => {
-                    wrtc.sendJson({
-                      type: "file",
-                      payload: {
-                        pieces: wrtc.file.pieces,
-                        pieceLength: wrtc.file.pieceLength,
-                        filename: wrtc.file.name,
-                        type: wrtc.file.type,
-                        size: wrtc.file.size,
-                      },
-                    });
-
-                    let lastRecorded = 0;
-                    wrtc.on("progress", (progress) => {
-                      if (lastRecorded === 0) {
-                        notification({
-                          type: "ADD_NOTIFICATION",
-                          payload: {
-                            id: nanoid(),
-                            lifeSpan: 5000,
-                            message: "File share started.",
-                            title: "File Share",
-                            type: "info",
-                          },
-                        });
-                      }
-
-                      let currentTime = new Date().getTime();
-                      let elapsedTime = currentTime - lastRecorded;
-                      if (progress >= 1) {
-                        uploadTrafficRef.current.classList.remove("active");
-                        lastRecorded = null;
-                        elapsedTime = null;
-                        currentTime = null;
-                      } else if (elapsedTime > 500) {
-                        uploadTrafficRef.current.classList.toggle("active");
-                        lastRecorded = currentTime;
-                      }
-                    });
-
-                    wrtc.once("done", (filename: string) => {
-                      notification({
-                        type: "ADD_NOTIFICATION",
-                        payload: {
-                          id: nanoid(),
-                          lifeSpan: 5000,
-                          message: `File: ${filename}\ndone sharing!`,
-                          title: "File Done",
-                          type: "success",
-                        },
-                      });
-                    });
-
-                    wrtc.once("reject", (filename: string) => {
-                      notification({
-                        type: "ADD_NOTIFICATION",
-                        payload: {
-                          id: nanoid(),
-                          lifeSpan: 5000,
-                          message: `File: ${filename}\nrejected by peer.`,
-                          title: "File Rejected",
-                          type: "warning",
-                        },
-                      });
-                    });
-                  });
+                  startShare(wrtc);
                 });
 
                 wrtc.once("close", () => {
                   console.log("data channel closed.");
-                  // todo: maintain connection after the file has been saved and destroyed.
                   wrtc.close();
                   downloadTrafficRef.current.classList.remove("active");
                   uploadTrafficRef.current.classList.remove("active");
@@ -534,8 +495,82 @@ const Room: FC<Props> = ({ setTheme, match }) => {
 
       wrtc.connect(true);
     }
+    // * end logic for first time starting a file share as an offerer.
 
     setFileConfirm(false);
+  };
+
+  const startShare = (wrtc: WRTC) => {
+    wrtc.setFile(confirmationInfo.file).then(() => {
+      // send metadata to peer so that he/she can set up the environment
+      // to receive the file.
+      wrtc.sendJson({
+        type: "file",
+        payload: {
+          pieces: wrtc.file.pieces,
+          pieceLength: wrtc.file.pieceLength,
+          filename: wrtc.file.name,
+          type: wrtc.file.type,
+          size: wrtc.file.size,
+        },
+      });
+
+      let lastRecorded = 0;
+      wrtc.on("progress", (progress) => {
+        if (lastRecorded === 0) {
+          notification({
+            type: "ADD_NOTIFICATION",
+            payload: {
+              id: nanoid(),
+              lifeSpan: 5000,
+              message: "File share started.",
+              title: "File Share",
+              type: "info",
+            },
+          });
+        }
+
+        let currentTime = new Date().getTime();
+        let elapsedTime = currentTime - lastRecorded;
+        if (progress >= 1) {
+          console.log("Upload progress: " + progress);
+          uploadTrafficRef.current.classList.remove("active");
+          lastRecorded = null;
+          elapsedTime = null;
+          currentTime = null;
+        } else if (elapsedTime > 500) {
+          console.log("Upload progress: " + progress);
+          uploadTrafficRef.current.classList.toggle("active");
+          lastRecorded = currentTime;
+        }
+      });
+
+      wrtc.once("done", (filename: string) => {
+        notification({
+          type: "ADD_NOTIFICATION",
+          payload: {
+            id: nanoid(),
+            lifeSpan: 5000,
+            message: `File: ${filename}\ndone sharing!`,
+            title: "File Done",
+            type: "success",
+          },
+        });
+      });
+
+      wrtc.once("reject", (filename: string) => {
+        notification({
+          type: "ADD_NOTIFICATION",
+          payload: {
+            id: nanoid(),
+            lifeSpan: 5000,
+            message: `File: ${filename}\nrejected by peer.`,
+            title: "File Rejected",
+            type: "warning",
+          },
+        });
+      });
+    });
   };
 
   const allPeers = peers.map((peer, index) => {
