@@ -162,19 +162,30 @@ export class CustomFile extends EventEmitter {
 
         case 0x2:
           // read mode
-          // file property should be defined
-          if (this._file instanceof File) {
-            this._readStream = this._file.stream();
-            this.emit("ready");
-          } else {
+          try {
+            // file property should be defined
+            if (this._file instanceof File) {
+              this._readStream = this._file.stream();
+              this.emit("ready");
+            } else {
+              this.emit(
+                "error",
+                new CustomFileError(
+                  "Reading mode. Expected File instance but received " +
+                    typeof this._file,
+                  null
+                )
+              );
+            }
+          } catch (error) {
             this.emit(
               "error",
               new CustomFileError(
-                "Reading mode. Expected File instance but received " +
-                  typeof this._file,
-                null
+                "Error getting read stream for file. Fallback to normal blob slicing method.",
+                error
               )
             );
+            this.emit("ready");
           }
           break;
 

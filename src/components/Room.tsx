@@ -775,6 +775,7 @@ const Room: FC<Props> = ({ setTheme, match }) => {
           }
         />
       </Modal>
+      {/* side nav will be here and display the sharing options */}
       <Loading exit={!loading} withTimeout={true} />
     </Fragment>
   );

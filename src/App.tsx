@@ -33,6 +33,7 @@ function App() {
 
   useEffect(() => {
     toggleTheme(true);
+    console.log(process.env);
   }, []);
 
   return (

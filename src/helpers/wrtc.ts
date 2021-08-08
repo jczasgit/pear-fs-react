@@ -66,14 +66,16 @@ export class WRTC extends EventEmitter {
     this._wrtcConfig = {
       iceServers: [
         {
-          urls: ["stun:stun.l.google.com:19302"],
+          urls: [
+            process.env.REACT_APP_STUN_SERVER || "stun:stun.l.google.com:19302",
+          ],
           username: "",
           credential: "",
         },
         {
-          urls: ["turn:numb.viagenie.ca"],
-          credential: "muazkh",
-          username: "webrtc@live.com",
+          urls: [process.env.REACT_APP_TURN_SERVER || "turn:numb.viagenie.ca"],
+          credential: process.env.REACT_APP_TURN_SERVER_USR || "muazkh",
+          username: process.env.REACT_APP_TURN_SERVER_PWD || "webrtc@live.com",
         },
       ],
       iceTransportPolicy: "all",
@@ -211,10 +213,10 @@ export class WRTC extends EventEmitter {
     this._file.removeAllListeners("data");
     this._file.on("data", (blob) => {
       this.emit("data-ws", blob);
-      queueMicrotask(this._file.read.bind(this._file, false));
+      queueMicrotask(this._file.read.bind(this._file, true));
     });
 
-    this._file.read(false);
+    this._file.read(true);
   }
 
   public async socketReceive(data: ArrayBuffer) {}
@@ -423,7 +425,7 @@ export class WRTC extends EventEmitter {
         break;
       case "download":
         // a peer is asking for more chunks of data.
-        this._file.read(false);
+        this._file.read(true);
         break;
       case "reject":
         // the peer rejected our file share offer.
