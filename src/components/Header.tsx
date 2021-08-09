@@ -8,7 +8,7 @@ export const Header: FC = () => {
       <header>
         <div className="logo-wrapper">
           <img src={logo} alt="Pear-FS Logo" />
-          <p className="logo">P2P-FS</p>
+          <p className="logo">P2P File Sharing Site</p>
         </div>
       </header>
     </>
