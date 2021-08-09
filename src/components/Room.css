@@ -21,3 +21,13 @@
   width: 100%;
   height: 100%;
 }
+
+.share-content {
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
